@@ -15,7 +15,7 @@ Windows 截图搜题助手。通过全局鼠标手势框选屏幕题目，调用
   </tr>
   <tr>
     <td align="center">手机与电脑配合，实时查看模型答案</td>
-    <td align="center">答案与解析集中在同一个输出框</td>
+    <td align="center">电脑透明水印可以拖动调整透明度和大小</td>
   </tr>
 </table>
 
