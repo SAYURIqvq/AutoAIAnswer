@@ -8,6 +8,15 @@ Windows 截图搜题助手。通过全局鼠标手势框选屏幕题目，调用
 
 无需安装 Python，下载后直接运行，并在软件界面中填写自己的 DeepSeek/OpenRouter API Key。公开发行版不包含作者的 API Key。
 
+### 在 GitHub 页面中找到下载文件
+
+1. 在仓库首页右侧找到 **Releases**。
+2. 点击最新版本 **AutoAIAnswer v0.1.0**。
+3. 进入发布页面后展开 **Assets**。
+4. 点击 **AI_Assistant.exe** 开始下载。
+
+如果没有看到右侧栏，也可以直接点击上方的“下载 Windows 单文件版”链接，或打开 [Releases 页面](https://github.com/SAYURIqvq/AutoAIAnswer/releases/latest)。
+
 ## 核心体验
 
 ### 手机端实时查看
