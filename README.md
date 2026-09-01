@@ -2,6 +2,12 @@
 
 Windows 截图搜题助手。通过全局鼠标手势框选屏幕题目，调用视觉模型分析，并把答案实时流式发送到同一局域网内的手机浏览器；也可选择在桌面显示轻量透明悬浮答案。
 
+## 直接下载
+
+[下载 Windows 单文件版 AI_Assistant.exe](https://github.com/SAYURIqvq/AutoAIAnswer/releases/latest/download/AI_Assistant.exe)
+
+无需安装 Python，下载后直接运行，并在软件界面中填写自己的 DeepSeek/OpenRouter API Key。公开发行版不包含作者的 API Key。
+
 ## 核心体验
 
 ### 手机端实时查看
@@ -91,13 +97,13 @@ python -m pytest tests -q
 
 ## 构建单文件 EXE
 
-先在本地 `.env` 填好你希望内置的默认配置，然后运行：
+运行以下脚本：
 
 ```bat
 build_windows_exe.bat
 ```
 
-生成文件为 `dist\AI_Assistant.exe`。构建脚本会把本地 `.env` 嵌入 EXE；请勿公开上传带有真实 Key 的构建产物。仓库已忽略 `dist/`、`build/`、`.env` 和 `*.spec`。
+生成文件为 `dist\AI_Assistant.exe`。公开构建不会嵌入本地 `.env` 或任何 API Key；用户首次启动后在界面中填写并保存自己的 Key。仓库已忽略 `dist/`、`build/`、`.env` 和 `*.spec`。
 
 ## 安全说明
 
