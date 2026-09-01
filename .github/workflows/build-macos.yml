@@ -10,7 +10,7 @@ jobs:
   build-macos:
     runs-on: macos-14
     permissions:
-      contents: read
+      contents: write
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -46,3 +46,9 @@ jobs:
           name: AutoAIAnswer-macOS
           path: dist/AutoAIAnswer-macOS.dmg
           if-no-files-found: error
+
+      - name: Attach DMG to tagged release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" dist/AutoAIAnswer-macOS.dmg --clobber
