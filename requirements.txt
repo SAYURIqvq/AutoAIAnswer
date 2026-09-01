@@ -3,6 +3,7 @@ uvicorn[standard]
 websockets
 PySide6
 mouse
+pynput
 mss
 pillow
 requests

@@ -29,3 +29,15 @@ def test_disabled_listener_ignores_and_clears_pending_click() -> None:
     assert listener._left_down_at is None
     assert listener._left_down_position is None
     assert clicks == []
+
+
+def test_explicit_position_supports_macos_callback(monkeypatch) -> None:
+    clicks = []
+    listener = MouseRoiListener(lambda x, y: clicks.append((x, y)), lambda x, y: clicks.append((x, y)))
+    times = iter((10.0, 12.1))
+    monkeypatch.setattr("ai_screenshot_assistant.input.mouse_listener.time.monotonic", lambda: next(times))
+
+    listener._handle_left_down((120, 240))
+    listener._handle_left_up()
+
+    assert clicks == [(120, 240)]

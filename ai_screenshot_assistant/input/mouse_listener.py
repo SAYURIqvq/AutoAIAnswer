@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+import sys
 import threading
 import time
 
@@ -18,6 +19,7 @@ class MouseRoiListener:
         self.long_press_seconds = 2.0
         self._enabled = True
         self._state_lock = threading.Lock()
+        self._mac_listener = None
 
     @property
     def enabled(self) -> bool:
@@ -31,25 +33,47 @@ class MouseRoiListener:
             self._left_down_position = None
 
     def start(self) -> None:
+        if sys.platform == "darwin":
+            from pynput import mouse as pynput_mouse
+
+            def on_click(x: int, y: int, button: object, pressed: bool) -> None:
+                if button != pynput_mouse.Button.left:
+                    return
+                if pressed:
+                    self._handle_left_down((int(x), int(y)))
+                else:
+                    self._handle_left_up()
+
+            self._mac_listener = pynput_mouse.Listener(on_click=on_click)
+            self._mac_listener.start()
+            return
+
         import mouse
 
         mouse.on_button(self._handle_left_down, buttons=("left",), types=("down",))
         mouse.on_button(self._handle_left_up, buttons=("left",), types=("up",))
 
     def stop(self) -> None:
+        if self._mac_listener is not None:
+            self._mac_listener.stop()
+            self._mac_listener = None
+            return
+
         import mouse
 
         mouse.unhook_all()
 
-    def _handle_left_down(self) -> None:
-        import mouse
+    def _handle_left_down(self, position: tuple[int, int] | None = None) -> None:
+        if position is None:
+            import mouse
 
-        x, y = mouse.get_position()
+            x, y = mouse.get_position()
+            position = (int(x), int(y))
         with self._state_lock:
             if not self._enabled:
                 return
             self._left_down_at = time.monotonic()
-            self._left_down_position = (int(x), int(y))
+            self._left_down_position = position
 
     def _handle_left_up(self) -> None:
         with self._state_lock:

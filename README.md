@@ -1,19 +1,21 @@
 # AutoAIAnswer
 
-Windows 截图搜题助手。通过全局鼠标手势框选屏幕题目，调用视觉模型分析，并把答案实时流式发送到同一局域网内的手机浏览器；也可选择在桌面显示轻量透明悬浮答案。
+Windows / macOS 截图搜题助手。通过全局鼠标手势框选屏幕题目，调用视觉模型分析，并把答案实时流式发送到同一局域网内的手机浏览器；也可选择在桌面显示轻量透明悬浮答案。
 
 ## 直接下载
 
 [下载 Windows 单文件版 AI_Assistant.exe](https://github.com/SAYURIqvq/AutoAIAnswer/releases/latest/download/AI_Assistant.exe)
 
-无需安装 Python，下载后直接运行，并在软件界面中填写自己的 DeepSeek/OpenRouter API Key。公开发行版不包含作者的 API Key。
+[下载 macOS 版 AutoAIAnswer-macOS.dmg](https://github.com/SAYURIqvq/AutoAIAnswer/releases/latest/download/AutoAIAnswer-macOS.dmg)
+
+无需安装 Python，下载对应系统版本后直接运行，并在软件界面中填写自己的 DeepSeek/OpenRouter API Key。公开发行版不包含作者的 API Key。
 
 ### 在 GitHub 页面中找到下载文件
 
 1. 在仓库首页右侧找到 **Releases**。
 2. 点击最新版本 **AutoAIAnswer v0.1.0**。
 3. 进入发布页面后展开 **Assets**。
-4. 点击 **AI_Assistant.exe** 开始下载。
+4. Windows 点击 **AI_Assistant.exe**；macOS 点击 **AutoAIAnswer-macOS.dmg**。
 
 如果没有看到右侧栏，也可以直接点击上方的“下载 Windows 单文件版”链接，或打开 [Releases 页面](https://github.com/SAYURIqvq/AutoAIAnswer/releases/latest)。
 
@@ -38,7 +40,7 @@ Windows 截图搜题助手。通过全局鼠标手势框选屏幕题目，调用
 
 桌面端可开启类似歌词或水印的答案悬浮层：文字小巧、低透明、始终置顶，并可拖动到任意位置。模型生成时内容会同步流式追加，不需要切换窗口。悬浮层默认关闭，可随时在主窗口中开启或隐藏，并自动记住上次位置。
 
-> 悬浮答案是普通 Windows 置顶窗口，可能出现在屏幕共享或录制画面中；本项目不提供规避录屏、共享屏幕或监控检测的功能。
+> 悬浮答案是普通系统置顶窗口，可能出现在屏幕共享或录制画面中；本项目不提供规避录屏、共享屏幕或监控检测的功能。
 
 ## 功能
 
@@ -61,6 +63,13 @@ Windows 截图搜题助手。通过全局鼠标手势框选屏幕题目，调用
 
 Windows 首次运行可能询问防火墙权限，请允许程序访问“专用网络”，否则手机可能无法连接电脑的 8000 端口。
 
+### macOS 首次运行
+
+1. 打开 DMG，将 `AutoAIAnswer.app` 拖入“应用程序”。
+2. 由于当前版本未使用 Apple Developer ID 签名，首次打开请在 Finder 中右键应用并选择“打开”。
+3. 根据系统提示，在“系统设置 → 隐私与安全性”中允许 **辅助功能**（监听框选手势）和 **屏幕录制**（截取题目区域）。
+4. 授权后若手势或截图仍不可用，请完全退出应用后重新打开。
+
 ## 模型切换规则
 
 - 软件启动后首先使用 DeepSeek 官方接口与视觉模型。
@@ -70,7 +79,7 @@ Windows 首次运行可能询问防火墙权限，请允许程序访问“专用
 
 ## 从源码运行
 
-需要 Windows 和 Python 3.11 或更高版本。
+需要 Windows 或 macOS，以及 Python 3.11 或更高版本。
 
 ```powershell
 python -m venv .venv
@@ -96,7 +105,7 @@ OPENROUTER_MODEL=qwen/qwen3.8-flash
 OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 ```
 
-不要提交真实 API Key。桌面界面保存的设置由 Qt `QSettings` 存储在当前 Windows 用户配置中。
+不要提交真实 API Key。桌面界面保存的设置由 Qt `QSettings` 存储在当前系统用户配置中。
 
 ## 测试
 
