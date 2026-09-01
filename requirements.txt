@@ -1,0 +1,14 @@
+fastapi
+uvicorn[standard]
+websockets
+PySide6
+mouse
+mss
+pillow
+requests
+python-dotenv
+pyinstaller
+pytest
+pytest-asyncio
+httpx
+qrcode[pil]

@@ -1,0 +1,2 @@
+"""AI Screenshot Assistant MVP."""
+

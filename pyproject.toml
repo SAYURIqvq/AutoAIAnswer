@@ -1,0 +1,10 @@
+[project]
+name = "ai-screenshot-assistant"
+version = "0.1.0"
+description = "Windows AI screenshot assistant with DeepSeek/OpenRouter failover and mobile streaming."
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"
