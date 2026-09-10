@@ -27,18 +27,8 @@ jobs:
       - name: Run tests
         run: python -m pytest tests -q
 
-      - name: Build app bundle
-        run: |
-          pyinstaller --noconfirm --clean --windowed --name AutoAIAnswer \
-            --add-data "ai_screenshot_assistant/web/static:ai_screenshot_assistant/web/static" \
-            --exclude-module pytest \
-            main.py
-
-      - name: Create DMG
-        run: |
-          mkdir -p dist/dmg
-          cp -R dist/AutoAIAnswer.app dist/dmg/
-          hdiutil create -volname AutoAIAnswer -srcfolder dist/dmg -ov -format UDZO dist/AutoAIAnswer-macOS.dmg
+      - name: Build app bundle and DMG
+        run: bash packaging/macos/package.sh
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4

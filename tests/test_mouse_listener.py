@@ -90,3 +90,22 @@ def test_disabled_listener_clears_pending_right_click() -> None:
     assert listener._right_down_position is None
     assert clicks == []
 
+
+def test_control_left_long_press_triggers_fullscreen(monkeypatch) -> None:
+    long_left = []
+    long_right = []
+    listener = MouseRoiListener(
+        lambda x, y: long_left.append((x, y)),
+        lambda x, y: None,
+        lambda x, y: long_right.append((x, y)),
+    )
+    monkeypatch.setattr(listener, "_is_control_held", lambda: True)
+    times = iter((10.0, 12.1))
+    monkeypatch.setattr("ai_screenshot_assistant.input.mouse_listener.time.monotonic", lambda: next(times))
+
+    listener._handle_left_down((1, 2))
+    listener._handle_left_up()
+
+    assert long_right == [(1, 2)]
+    assert long_left == []
+

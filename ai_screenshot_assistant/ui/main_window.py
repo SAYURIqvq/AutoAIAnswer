@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import io
+import sys
 import threading
 from typing import Any
 
-from PySide6.QtCore import QObject, QSettings, Signal
+from PySide6.QtCore import QObject, QSettings, QTimer, Signal
 from PySide6.QtGui import QCloseEvent, QPixmap
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -13,6 +14,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMainWindow,
+    QMessageBox,
     QPushButton,
     QTextEdit,
     QVBoxLayout,
@@ -92,6 +94,8 @@ class MainWindow(QMainWindow):
         self.overlay_toggle = QCheckBox("显示桌面流式悬浮答案")
         self.overlay_toggle.setChecked(False)
         self.overlay_toggle.toggled.connect(self.set_overlay_visible)
+        self.fullscreen_button = QPushButton("截取当前屏幕")
+        self.fullscreen_button.clicked.connect(self._capture_current_screen)
         self.mobile_label = QLabel("手机端：正在创建配对链接")
         self.mobile_label.setWordWrap(True)
         self.qr_label = QLabel()
@@ -113,12 +117,10 @@ class MainWindow(QMainWindow):
         layout.addLayout(provider_form)
         layout.addLayout(save_row)
         layout.addWidget(self.overlay_toggle)
+        layout.addWidget(self.fullscreen_button)
         layout.addWidget(self.mobile_label)
         layout.addWidget(self.qr_label)
-        gesture_hint = QLabel(
-            "手势：左键长按 2 秒框选起点，再左键单击终点；"
-            "右键长按 2 秒截取当前屏幕全屏。一图多题会按题号对应作答；生成期间暂停监听"
-        )
+        gesture_hint = QLabel(self._gesture_hint_text())
         gesture_hint.setWordWrap(True)
         layout.addWidget(gesture_hint)
         layout.addWidget(self.logs, 1)
@@ -127,6 +129,7 @@ class MainWindow(QMainWindow):
         root.setLayout(layout)
         self.setCentralWidget(root)
         self._setup_workflow()
+        QTimer.singleShot(600, self._maybe_prompt_macos_permissions)
 
     def _build_ai_client(self) -> FailoverVisionClient:
         deepseek = ProviderConfig(
@@ -258,6 +261,54 @@ class MainWindow(QMainWindow):
             return
         self.mouse_listener.set_enabled(False)
         threading.Thread(target=self._run_fullscreen, args=(x, y), daemon=True).start()
+
+    def _capture_current_screen(self) -> None:
+        center = self.frameGeometry().center()
+        self._right_long(center.x(), center.y())
+
+    def _gesture_hint_text(self) -> str:
+        if sys.platform == "darwin":
+            return (
+                "手势：左键长按 2 秒框选起点，再左键单击终点；"
+                "右键或 Control+左键长按 2 秒截取当前屏幕。也可用「截取当前屏幕」按钮。"
+                "一图多题会按题号对应作答；生成期间暂停监听"
+            )
+        return (
+            "手势：左键长按 2 秒框选起点，再左键单击终点；"
+            "右键长按 2 秒截取当前屏幕全屏。一图多题会按题号对应作答；生成期间暂停监听"
+        )
+
+    def _maybe_prompt_macos_permissions(self) -> None:
+        from ai_screenshot_assistant.utils.macos_permissions import (
+            accessibility_trusted,
+            is_macos,
+            open_privacy_pane,
+            request_screen_recording,
+            screen_recording_allowed,
+        )
+
+        if not is_macos():
+            return
+        request_screen_recording()
+        missing: list[str] = []
+        if not accessibility_trusted():
+            missing.append("辅助功能（监听框选和右键手势）")
+        if not screen_recording_allowed():
+            missing.append("屏幕录制（截取题目）")
+        if not missing:
+            return
+        self._log("macOS 需要授权：" + "、".join(missing))
+        QMessageBox.information(
+            self,
+            "需要 macOS 权限",
+            "请在「系统设置 → 隐私与安全性」中允许本应用：\n\n- "
+            + "\n- ".join(missing)
+            + "\n\n授权后请完全退出应用再重新打开。",
+        )
+        if not accessibility_trusted():
+            open_privacy_pane("Privacy_Accessibility")
+        elif not screen_recording_allowed():
+            open_privacy_pane("Privacy_ScreenCapture")
 
     def _run_fullscreen(self, x: int, y: int) -> None:
         try:

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+import ctypes
+import ctypes.util
 import sys
 import threading
 import time
@@ -104,9 +106,32 @@ class MouseRoiListener:
         if started_at is None or position is None:
             return
         if time.monotonic() - started_at >= self.long_press_seconds:
-            self.on_long_left(*position)
+            if self.on_long_right is not None and self._is_control_held():
+                self.on_long_right(*position)
+            else:
+                self.on_long_left(*position)
         else:
             self.on_short_left(*position)
+
+    def _is_control_held(self) -> bool:
+        if sys.platform != "darwin":
+            return False
+        library = ctypes.util.find_library("CoreGraphics")
+        if not library:
+            return False
+        try:
+            quartz = ctypes.cdll.LoadLibrary(library)
+            quartz.CGEventSourceKeyState.argtypes = [ctypes.c_int, ctypes.c_ushort]
+            quartz.CGEventSourceKeyState.restype = ctypes.c_bool
+            control = 0x3B
+            right_control = 0x3E
+            session_state = 0
+            return bool(
+                quartz.CGEventSourceKeyState(session_state, control)
+                or quartz.CGEventSourceKeyState(session_state, right_control)
+            )
+        except Exception:
+            return False
 
     def _handle_right_down(self, position: tuple[int, int] | None = None) -> None:
         position = self._current_position(position)

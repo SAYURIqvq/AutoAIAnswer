@@ -13,7 +13,7 @@ Windows / macOS 截图搜题助手。通过全局鼠标手势框选屏幕题目�
 ### 在 GitHub 页面中找到下载文件
 
 1. 在仓库首页右侧找到 **Releases**。
-2. 点击最新版本 **AutoAIAnswer v0.2.2**。
+2. 点击最新版本 **AutoAIAnswer v0.2.3**。
 3. 进入发布页面后展开 **Assets**。
 4. Windows 点击 **AI_Assistant.exe**；macOS 点击 **AutoAIAnswer-macOS.dmg**。
 
@@ -49,7 +49,7 @@ Windows / macOS 截图搜题助手。通过全局鼠标手势框选屏幕题目�
 - 两把 Key 都有时优先 DeepSeek；DeepSeek 返回 HTTP 402 时自动切换 OpenRouter
 - OpenRouter 默认模型为 `qwen/qwen3.8-flash`，模型 ID 可修改
 - DeepSeek Key、OpenRouter Key 和模型设置可在桌面界面保存
-- 左键长按 2 秒框选题目；右键长按 2 秒截取当前屏幕全屏
+- 左键长按 2 秒框选题目；右键长按 2 秒截取当前屏幕全屏（macOS 也可用 Control+左键，或窗口内「截取当前屏幕」）
 - 手机二维码配对，答案与解析在单一输出框中实时流式显示
 - 11px、约 18% 不透明度的水印式桌面悬浮答案，可拖动、置顶并记忆位置
 - 模型生成期间暂停鼠标手势，避免误触
@@ -60,7 +60,7 @@ Windows / macOS 截图搜题助手。通过全局鼠标手势框选屏幕题目�
 2. 确保手机与电脑连接同一局域网。
 3. 用手机扫描桌面窗口中的二维码并保持页面打开。
 4. 框选题目：在起点按住左键至少 2 秒，松开后移动到终点，再普通单击一次左键。
-5. 全屏截题：在题目所在屏幕按住右键 2 秒后松开，程序会截取当前显示器全屏。
+5. 全屏截题：在题目所在屏幕按住右键 2 秒后松开；macOS 也可用 Control+左键长按，或点击窗口里的「截取当前屏幕」。
 6. 程序截图并分析，多题会按题号对应输出；答案会实时显示在手机端，若开启悬浮答案也会同步显示在桌面。
 
 Windows 首次运行可能询问防火墙权限，请允许程序访问“专用网络”，否则手机可能无法连接电脑的 8000 端口。
@@ -84,12 +84,21 @@ Windows 首次运行可能询问防火墙权限，请允许程序访问“专用
 
 需要 Windows 或 macOS，以及 Python 3.11 或更高版本。
 
+Windows:
+
 ```powershell
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
 Copy-Item .env.example .env
 python main.py
+```
+
+macOS:
+
+```bash
+chmod +x run_desktop.sh
+./run_desktop.sh
 ```
 
 也可以直接编辑界面中的 Key 并保存。`.env` 仅用于首次提供默认值，已被 Git 忽略。
@@ -116,15 +125,24 @@ OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 python -m pytest tests -q
 ```
 
-## 构建单文件 EXE
+## 构建单文件 EXE / macOS 应用
 
-运行以下脚本：
+Windows:
 
 ```bat
 build_windows_exe.bat
 ```
 
-生成文件为 `dist\AI_Assistant.exe`。公开构建不会嵌入本地 `.env` 或任何 API Key；用户首次启动后在界面中填写并保存自己的 Key。仓库已忽略 `dist/`、`build/`、`.env` 和 `*.spec`。
+生成文件为 `dist\AI_Assistant.exe`。
+
+macOS:
+
+```bash
+chmod +x build_macos.sh
+./build_macos.sh
+```
+
+生成 `dist/AutoAIAnswer.app` 和 `dist/AutoAIAnswer-macOS.dmg`。GitHub Actions 会在打 `v*` 标签时构建并挂到 Release。公开构建不会嵌入本地 `.env` 或任何 API Key；用户首次启动后在界面中填写并保存自己的 Key。仓库已忽略 `dist/`、`build/`、`.env` 和 `*.spec`。
 
 ## 安全说明
 

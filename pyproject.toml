@@ -1,6 +1,6 @@
 [project]
 name = "ai-screenshot-assistant"
-version = "0.2.2"
+version = "0.2.3"
 description = "Windows and macOS AI screenshot assistant with DeepSeek/OpenRouter failover and mobile streaming."
 requires-python = ">=3.11"
 
