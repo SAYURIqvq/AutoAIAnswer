@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from typing import Any
@@ -9,6 +10,8 @@ from typing import Any
 import requests
 
 from ai_screenshot_assistant.ai.prompt import VISION_PROMPT
+
+_QUESTION_HEADING = re.compile(r"【第\d+题】")
 
 
 @dataclass(frozen=True)
@@ -37,15 +40,64 @@ def parse_ai_result(text: str) -> AIResult:
     try:
         data = json.loads(cleaned)
     except json.JSONDecodeError:
-        return _parse_answer_first_text(text)
+        return _parse_structured_text(text)
+    if isinstance(data, dict) and isinstance(data.get("questions"), list):
+        return _parse_questions_payload(text, data["questions"])
     if not isinstance(data, dict):
-        return AIResult(text=text)
+        return _parse_structured_text(text)
     return AIResult(
         text=text,
         answer=_optional(data.get("answer")),
         reason=_optional(data.get("reason")),
         confidence=_optional(data.get("confidence")),
     )
+
+
+def _parse_structured_text(text: str) -> AIResult:
+    multi = _parse_multi_question_text(text)
+    if multi is not None:
+        return multi
+    return _parse_answer_first_text(text)
+
+
+def _parse_questions_payload(text: str, questions: list[Any]) -> AIResult:
+    answers: list[str] = []
+    reasons: list[str] = []
+    for index, item in enumerate(questions, start=1):
+        if not isinstance(item, dict):
+            continue
+        answer = _optional(item.get("answer")) or ""
+        reason = _optional(item.get("reason"))
+        heading = _optional(item.get("question")) or f"第{index}题"
+        answers.append(f"{heading} {answer}".strip())
+        if reason:
+            reasons.append(f"{heading}：{reason}")
+    return AIResult(
+        text=text,
+        answer="；".join(answers) or None,
+        reason="\n".join(reasons) or None,
+    )
+
+
+def _parse_multi_question_text(text: str) -> AIResult | None:
+    if not _QUESTION_HEADING.search(text):
+        return None
+    parts = re.split(r"(?=【第\d+题】)", text.strip())
+    answers: list[str] = []
+    reasons: list[str] = []
+    for part in parts:
+        part = part.strip()
+        if not part.startswith("【第"):
+            continue
+        lines = [line for line in part.splitlines() if line.strip()]
+        heading = lines[0]
+        parsed = _parse_answer_first_text("\n".join(lines[1:]))
+        answers.append(f"{heading} {parsed.answer or ''}".strip())
+        if parsed.reason:
+            reasons.append(f"{heading}\n{parsed.reason}")
+    if not answers:
+        return None
+    return AIResult(text=text, answer="；".join(answers), reason="\n\n".join(reasons) or None)
 
 
 def _parse_answer_first_text(text: str) -> AIResult:
@@ -130,7 +182,7 @@ class VisionClient:
 
 
 class FailoverVisionClient:
-    """Uses DeepSeek first and permanently switches this instance on DeepSeek 402."""
+    """Uses whichever Key is configured. If both exist, DeepSeek is first and 402 fails over."""
 
     def __init__(
         self,
@@ -140,11 +192,26 @@ class FailoverVisionClient:
     ) -> None:
         self.deepseek = VisionClient(deepseek)
         self.openrouter = VisionClient(openrouter)
-        self.current_provider = "deepseek"
         self.on_provider_changed = on_provider_changed or (lambda _name: None)
+        self._deepseek_has_key = self._has_key(self.deepseek)
+        self._openrouter_has_key = self._has_key(self.openrouter)
+        self.current_provider = self._initial_provider()
+
+    @staticmethod
+    def _has_key(client: VisionClient) -> bool:
+        return bool(client.provider.api_key and client.provider.api_key.strip())
+
+    def _initial_provider(self) -> str:
+        if self._deepseek_has_key:
+            return "deepseek"
+        if self._openrouter_has_key:
+            return "openrouter"
+        return "none"
 
     def analyze_image_stream(self, png_bytes: bytes) -> Iterator[str]:
-        if self.current_provider == "openrouter":
+        if not self._deepseek_has_key and not self._openrouter_has_key:
+            raise RuntimeError("请至少填写 DeepSeek 或 OpenRouter 其中一把 API Key")
+        if self.current_provider == "openrouter" or not self._deepseek_has_key:
             yield from self.openrouter.analyze_image_stream(png_bytes)
             return
         try:
@@ -153,6 +220,8 @@ class FailoverVisionClient:
             status_code = exc.response.status_code if exc.response is not None else None
             if status_code != 402:
                 raise
+            if not self._openrouter_has_key:
+                raise RuntimeError("DeepSeek 额度不足（HTTP 402），且未配置 OpenRouter Key") from exc
             self.current_provider = "openrouter"
             self.on_provider_changed("openrouter")
             yield from self.openrouter.analyze_image_stream(png_bytes)

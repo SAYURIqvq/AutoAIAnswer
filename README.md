@@ -13,7 +13,7 @@ Windows / macOS 截图搜题助手。通过全局鼠标手势框选屏幕题目�
 ### 在 GitHub 页面中找到下载文件
 
 1. 在仓库首页右侧找到 **Releases**。
-2. 点击最新版本 **AutoAIAnswer v0.1.0**。
+2. 点击最新版本 **AutoAIAnswer v0.2.2**。
 3. 进入发布页面后展开 **Assets**。
 4. Windows 点击 **AI_Assistant.exe**；macOS 点击 **AutoAIAnswer-macOS.dmg**。
 
@@ -44,22 +44,24 @@ Windows / macOS 截图搜题助手。通过全局鼠标手势框选屏幕题目�
 
 ## 功能
 
-- 支持选择题、判断题、填空题、计算题和简答题
-- DeepSeek 与 OpenRouter 双提供商配置
-- 每次启动优先使用 DeepSeek；DeepSeek 返回 HTTP 402 时自动切换 OpenRouter
+- 支持选择题、判断题、填空题、计算题和简答题；一图多题会按题号对应作答
+- DeepSeek 与 OpenRouter 均可选，只需配置其中一把 Key 即可使用
+- 两把 Key 都有时优先 DeepSeek；DeepSeek 返回 HTTP 402 时自动切换 OpenRouter
 - OpenRouter 默认模型为 `qwen/qwen3.8-flash`，模型 ID 可修改
 - DeepSeek Key、OpenRouter Key 和模型设置可在桌面界面保存
+- 左键长按 2 秒框选题目；右键长按 2 秒截取当前屏幕全屏
 - 手机二维码配对，答案与解析在单一输出框中实时流式显示
 - 11px、约 18% 不透明度的水印式桌面悬浮答案，可拖动、置顶并记忆位置
 - 模型生成期间暂停鼠标手势，避免误触
 
 ## 使用方式
 
-1. 启动程序，填写并保存 DeepSeek Key、OpenRouter Key 和 OpenRouter 模型。
+1. 启动程序，至少填写一把 DeepSeek 或 OpenRouter Key 并保存；两把都填时优先 DeepSeek。
 2. 确保手机与电脑连接同一局域网。
 3. 用手机扫描桌面窗口中的二维码并保持页面打开。
-4. 在题目区域起点按住鼠标左键至少 2 秒，松开后移动到区域终点，再普通单击一次左键。
-5. 程序截图并分析，答案会实时显示在手机端；若开启悬浮答案，也会同步显示在桌面。
+4. 框选题目：在起点按住左键至少 2 秒，松开后移动到终点，再普通单击一次左键。
+5. 全屏截题：在题目所在屏幕按住右键 2 秒后松开，程序会截取当前显示器全屏。
+6. 程序截图并分析，多题会按题号对应输出；答案会实时显示在手机端，若开启悬浮答案也会同步显示在桌面。
 
 Windows 首次运行可能询问防火墙权限，请允许程序访问“专用网络”，否则手机可能无法连接电脑的 8000 端口。
 
@@ -72,9 +74,10 @@ Windows 首次运行可能询问防火墙权限，请允许程序访问“专用
 
 ## 模型切换规则
 
-- 软件启动后首先使用 DeepSeek 官方接口与视觉模型。
-- 只有 DeepSeek 返回 HTTP 402（额度不足）时，才会用同一截图重试 OpenRouter。
-- 切换后，本次软件运行期间继续使用 OpenRouter；重启软件后重新从 DeepSeek 开始。
+- 只配置了 OpenRouter 时，直接使用 OpenRouter。
+- 配置了 DeepSeek 时，启动后首先使用 DeepSeek 官方接口与视觉模型。
+- 只有 DeepSeek 返回 HTTP 402（额度不足）且已配置 OpenRouter Key 时，才会用同一截图重试 OpenRouter。
+- 切换后，本次软件运行期间继续使用 OpenRouter；重启软件后若仍有 DeepSeek Key，会重新从 DeepSeek 开始。
 - 认证失败、限流、超时、网络错误和服务端错误不会自动切换，以免重复消耗额度。
 
 ## 从源码运行

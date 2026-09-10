@@ -22,8 +22,8 @@ def http_error(status: int) -> requests.HTTPError:
     return requests.HTTPError(f"HTTP {status}", response=response)
 
 
-def config(name: str) -> ProviderConfig:
-    return ProviderConfig(name=name, api_key="key", base_url="https://example.test", model="vision")
+def config(name: str, api_key: str = "key") -> ProviderConfig:
+    return ProviderConfig(name=name, api_key=api_key, base_url="https://example.test", model="vision")
 
 
 def test_deepseek_402_switches_to_openrouter_for_session() -> None:
@@ -69,3 +69,46 @@ def test_openrouter_402_does_not_loop_back() -> None:
     else:
         raise AssertionError("OpenRouter 402 should propagate")
     assert client.current_provider == "openrouter"
+
+
+def test_openrouter_only_key_is_used() -> None:
+    client = FailoverVisionClient(config("DeepSeek", api_key=""), config("OpenRouter"))
+    client.deepseek = FakeClient(chunks=["unused"])
+    client.openrouter = FakeClient(chunks=["答案：A"])
+
+    assert client.current_provider == "openrouter"
+    assert list(client.analyze_image_stream(b"png")) == ["答案：A"]
+    assert client.deepseek.calls == 0
+    assert client.openrouter.calls == 1
+
+
+def test_missing_keys_raise_before_calling_providers() -> None:
+    client = FailoverVisionClient(config("DeepSeek", api_key=""), config("OpenRouter", api_key=""))
+    client.deepseek = FakeClient(chunks=["unused"])
+    client.openrouter = FakeClient(chunks=["unused"])
+
+    assert client.current_provider == "none"
+    try:
+        list(client.analyze_image_stream(b"png"))
+    except RuntimeError as exc:
+        assert "至少填写" in str(exc)
+    else:
+        raise AssertionError("missing keys should raise")
+    assert client.deepseek.calls == 0
+    assert client.openrouter.calls == 0
+
+
+def test_deepseek_402_without_openrouter_key_does_not_switch() -> None:
+    client = FailoverVisionClient(config("DeepSeek"), config("OpenRouter", api_key=""))
+    client.deepseek = FakeClient(error=http_error(402))
+    client.openrouter = FakeClient(chunks=["unused"])
+
+    try:
+        list(client.analyze_image_stream(b"png"))
+    except RuntimeError as exc:
+        assert "未配置 OpenRouter" in str(exc)
+    else:
+        raise AssertionError("402 without OpenRouter key should raise")
+    assert client.current_provider == "deepseek"
+    assert client.openrouter.calls == 0
+

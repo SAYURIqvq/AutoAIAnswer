@@ -36,11 +36,11 @@
       const result = payload.result || {};
       buffer = result.text || buffer || "分析完成";
       outputEl.textContent = buffer;
-      setSelectionStatus("completed", "答案已生成，可以框选下一题");
+      setSelectionStatus("completed", "答案已生成，可以继续框选或全屏截题");
     } else if (event.type === "answer.error") {
       buffer = "";
       outputEl.textContent = `错误：${payload.message || "模型调用失败"}`;
-      setSelectionStatus("error", "分析失败，可以重新框选");
+      setSelectionStatus("error", "分析失败，可以重新框选或全屏截题");
     }
   }
 

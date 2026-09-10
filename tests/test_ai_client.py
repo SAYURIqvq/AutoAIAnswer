@@ -27,3 +27,25 @@ def test_extract_stream_delta() -> None:
     data = '{"choices":[{"delta":{"content":"hello"}}]}'
 
     assert OpenRouterVisionClient._extract_delta(data) == "hello"
+
+
+def test_parse_multi_question_text() -> None:
+    result = parse_ai_result(
+        "【第1题】TCP 特点\n答案：B\n解析：面向连接\n\n【第2题】UDP 特点\n答案：A\n解析：无连接"
+    )
+
+    assert "【第1题】" in result.text
+    assert result.answer == "【第1题】TCP 特点 B；【第2题】UDP 特点 A"
+    assert result.reason is not None
+    assert "面向连接" in result.reason
+    assert "无连接" in result.reason
+
+
+def test_parse_questions_json() -> None:
+    result = parse_ai_result(
+        '{"questions":[{"question":"第1题","answer":"B","reason":"TCP"},{"question":"第2题","answer":"A","reason":"UDP"}]}'
+    )
+
+    assert result.answer == "第1题 B；第2题 A"
+    assert result.reason == "第1题：TCP\n第2题：UDP"
+

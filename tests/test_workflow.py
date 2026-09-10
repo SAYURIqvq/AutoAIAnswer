@@ -6,8 +6,15 @@ from ai_screenshot_assistant.capture.roi import Roi
 
 
 class FakeCapture:
+    def __init__(self):
+        self.fullscreen_args = None
+
     def capture_png(self, roi, debug_path=None):
         return b"png"
+
+    def capture_fullscreen_png(self, x=None, y=None, debug_path=None):
+        self.fullscreen_args = (x, y)
+        return b"fullpng"
 
 
 class FakeAI:
@@ -77,6 +84,34 @@ def test_selection_statuses_are_published() -> None:
 
     statuses = [event["payload"] for event in publisher.events if event["type"] == "selection.status"]
     assert statuses == [
-        {"state": "waiting", "message": "请在起点按住左键 2 秒"},
+        {"state": "waiting", "message": "左键长按 2 秒框选，或右键长按 2 秒全屏"},
         {"state": "p1_ready", "message": "左键 2 秒已识别，请再左键框选终点"},
     ]
+
+
+def test_workflow_fullscreen_streams_and_completes() -> None:
+    publisher = FakePublisher()
+    capture = FakeCapture()
+    result_holder = {}
+    workflow = AssistantWorkflow(
+        session_id="s1",
+        capture=capture,
+        ai_client=FakeAI(),
+        publisher=publisher,
+        app_settings=replace(settings, save_debug_image=False),
+    )
+    workflow.on_result = result_holder.update
+    workflow.roi.left_up(3, 4)
+
+    workflow.process_fullscreen(120, 240)
+
+    assert capture.fullscreen_args == (120, 240)
+    assert workflow.roi.p1 is None
+    assert result_holder["answer"] == "B"
+    assert [event["type"] for event in publisher.events[:3]] == [
+        "selection.status",
+        "selection.status",
+        "answer.started",
+    ]
+    assert publisher.events[2]["payload"] == {"mode": "fullscreen"}
+

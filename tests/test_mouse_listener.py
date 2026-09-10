@@ -41,3 +41,52 @@ def test_explicit_position_supports_macos_callback(monkeypatch) -> None:
     listener._handle_left_up()
 
     assert clicks == [(120, 240)]
+
+
+def test_right_long_press_fires_fullscreen_callback(monkeypatch) -> None:
+    long_right = []
+    listener = MouseRoiListener(
+        lambda x, y: None,
+        lambda x, y: None,
+        lambda x, y: long_right.append((x, y)),
+    )
+    times = iter((10.0, 12.1))
+    monkeypatch.setattr("ai_screenshot_assistant.input.mouse_listener.time.monotonic", lambda: next(times))
+
+    listener._handle_right_down((8, 9))
+    listener._handle_right_up()
+
+    assert long_right == [(8, 9)]
+
+
+def test_short_right_click_is_ignored(monkeypatch) -> None:
+    long_right = []
+    short_left = []
+    listener = MouseRoiListener(
+        lambda x, y: None,
+        lambda x, y: short_left.append((x, y)),
+        lambda x, y: long_right.append((x, y)),
+    )
+    times = iter((10.0, 10.4))
+    monkeypatch.setattr("ai_screenshot_assistant.input.mouse_listener.time.monotonic", lambda: next(times))
+
+    listener._handle_right_down((8, 9))
+    listener._handle_right_up()
+
+    assert long_right == []
+    assert short_left == []
+
+
+def test_disabled_listener_clears_pending_right_click() -> None:
+    clicks = []
+    listener = MouseRoiListener(lambda x, y: None, lambda x, y: None, lambda x, y: clicks.append((x, y)))
+    listener._right_down_at = 10.0
+    listener._right_down_position = (8, 9)
+
+    listener.set_enabled(False)
+    listener._handle_right_up()
+
+    assert listener._right_down_at is None
+    assert listener._right_down_position is None
+    assert clicks == []
+

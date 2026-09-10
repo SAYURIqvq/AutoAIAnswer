@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 from uuid import uuid4
 
 from ai_screenshot_assistant.ai.client import parse_ai_result
@@ -13,6 +13,13 @@ from ai_screenshot_assistant.capture.roi import Roi, RoiStateMachine
 
 class CapturePort(Protocol):
     def capture_png(self, roi: Roi, debug_path: Path | None = None) -> bytes: ...
+
+    def capture_fullscreen_png(
+        self,
+        x: int | None = None,
+        y: int | None = None,
+        debug_path: Path | None = None,
+    ) -> bytes: ...
 
 
 class AIPort(Protocol):
@@ -48,8 +55,8 @@ class AssistantWorkflow:
 
     def start_capture(self) -> None:
         self.roi.start()
-        self.on_status("Silent mode: hold left 2s at P1, then left click P2")
-        self._publish_selection_status("waiting", "请在起点按住左键 2 秒")
+        self.on_status("Left 2s to box a region, or right 2s for fullscreen")
+        self._publish_selection_status("waiting", "左键长按 2 秒框选，或右键长按 2 秒全屏")
 
     def left_up(self, x: int, y: int) -> None:
         self.roi.left_up(x, y)
@@ -76,33 +83,56 @@ class AssistantWorkflow:
         request_id = uuid4().hex
         started_at = time.perf_counter()
         try:
-            debug_path = Path("debug/image.png") if self.settings.save_debug_image else None
-            png = self.capture.capture_png(roi, debug_path=debug_path)
-            self._publish_selection_status("analyzing", "截图成功，AI 正在分析")
-            self.on_stream_started()
-            self._publish("answer.started", request_id, {"roi": roi.to_mss_monitor()})
-            chunks: list[str] = []
-            for delta in self.ai_client.analyze_image_stream(png):
-                chunks.append(delta)
-                self.on_stream_delta(delta)
-                self._publish("answer.delta", request_id, {"delta": delta})
-            text = "".join(chunks)
-            result = parse_ai_result(text)
-            payload = {
-                "result": {
-                    "text": result.text,
-                    "answer": result.answer,
-                    "reason": result.reason,
-                    "confidence": result.confidence,
-                    "latency_seconds": round(time.perf_counter() - started_at, 3),
-                }
-            }
-            self._publish("answer.completed", request_id, payload)
-            self.on_stream_completed(text)
-            self.on_result(payload["result"])
-            self._publish_selection_status("completed", "答案已生成，可以框选下一题")
+            png = self.capture.capture_png(roi, debug_path=self._debug_path())
+            self._analyze_png(png, request_id, started_at, {"roi": roi.to_mss_monitor()})
         except Exception as exc:
             self._fail(str(exc), request_id=request_id)
+
+    def process_fullscreen(self, x: int | None = None, y: int | None = None) -> None:
+        self.roi.reset()
+        self.on_status("Fullscreen captured; analyzing...")
+        self._publish_selection_status("capturing", "已截取当前屏幕全屏，正在发送给 AI")
+        request_id = uuid4().hex
+        started_at = time.perf_counter()
+        try:
+            png = self.capture.capture_fullscreen_png(x, y, debug_path=self._debug_path())
+            self._analyze_png(png, request_id, started_at, {"mode": "fullscreen"})
+        except Exception as exc:
+            self._fail(str(exc), request_id=request_id)
+
+    def _debug_path(self) -> Path | None:
+        return Path("debug/image.png") if self.settings.save_debug_image else None
+
+    def _analyze_png(
+        self,
+        png: bytes,
+        request_id: str,
+        started_at: float,
+        started_payload: dict[str, Any],
+    ) -> None:
+        self._publish_selection_status("analyzing", "截图成功，AI 正在分析全部题目")
+        self.on_stream_started()
+        self._publish("answer.started", request_id, started_payload)
+        chunks: list[str] = []
+        for delta in self.ai_client.analyze_image_stream(png):
+            chunks.append(delta)
+            self.on_stream_delta(delta)
+            self._publish("answer.delta", request_id, {"delta": delta})
+        text = "".join(chunks)
+        result = parse_ai_result(text)
+        payload = {
+            "result": {
+                "text": result.text,
+                "answer": result.answer,
+                "reason": result.reason,
+                "confidence": result.confidence,
+                "latency_seconds": round(time.perf_counter() - started_at, 3),
+            }
+        }
+        self._publish("answer.completed", request_id, payload)
+        self.on_stream_completed(text)
+        self.on_result(payload["result"])
+        self._publish_selection_status("completed", "答案已生成，可以继续框选或全屏截题")
 
     def _publish(self, event_type: str, request_id: str, payload: dict) -> None:
         event = Event(type=event_type, session_id=self.session_id, request_id=request_id, payload=payload)
@@ -115,7 +145,7 @@ class AssistantWorkflow:
     def _fail(self, message: str, request_id: str | None = None) -> None:
         request_id = request_id or uuid4().hex
         self._publish("answer.error", request_id, {"message": message})
-        self._publish_selection_status("error", "分析失败，可以重新框选")
+        self._publish_selection_status("error", "分析失败，可以重新框选或全屏截题")
         self.on_stream_error(message)
         self.on_error(message)
 

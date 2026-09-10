@@ -45,7 +45,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.backend_url = backend_url or settings.backend_url
         self.setWindowTitle("AI 截图搜题助手")
-        self.setMinimumSize(560, 620)
+        self.setMinimumSize(560, 660)
         self.app_settings = QSettings("AI Screenshot Assistant", "Desktop")
 
         legacy_key = str(self.app_settings.value("api/key", "") or "")
@@ -63,7 +63,7 @@ class MainWindow(QMainWindow):
         self.signals.status.connect(self.set_status)
         self.signals.result.connect(self.show_result)
         self.signals.error.connect(self.show_error)
-        self.signals.provider_changed.connect(self.set_provider)
+        self.signals.provider_changed.connect(self._on_provider_failover)
 
         self.overlay = StreamingOverlay(self.app_settings)
         self.signals.stream_started.connect(self.overlay.start_stream)
@@ -80,9 +80,12 @@ class MainWindow(QMainWindow):
         self.provider_label = QLabel("当前模型：DeepSeek / deepseek-v4-flash-vision-exp")
         self.deepseek_key_input = QLineEdit(self.deepseek_key)
         self.deepseek_key_input.setEchoMode(QLineEdit.Normal)
+        self.deepseek_key_input.setPlaceholderText("可选，填写后优先使用")
         self.openrouter_key_input = QLineEdit(self.openrouter_key)
         self.openrouter_key_input.setEchoMode(QLineEdit.Normal)
+        self.openrouter_key_input.setPlaceholderText("可选，仅填这一把也可以用")
         self.openrouter_model_input = QLineEdit(self.openrouter_model)
+        self.openrouter_model_input.setPlaceholderText("使用 OpenRouter 时生效")
         self.save_providers_button = QPushButton("保存模型配置")
         self.save_providers_button.clicked.connect(self.save_provider_settings)
         self.save_status = QLabel("")
@@ -96,8 +99,8 @@ class MainWindow(QMainWindow):
         self.logs.setReadOnly(True)
 
         provider_form = QFormLayout()
-        provider_form.addRow("DeepSeek Key（首选）", self.deepseek_key_input)
-        provider_form.addRow("OpenRouter Key（402 备用）", self.openrouter_key_input)
+        provider_form.addRow("DeepSeek Key（可选）", self.deepseek_key_input)
+        provider_form.addRow("OpenRouter Key（可选）", self.openrouter_key_input)
         provider_form.addRow("OpenRouter 模型", self.openrouter_model_input)
 
         save_row = QHBoxLayout()
@@ -112,7 +115,12 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.overlay_toggle)
         layout.addWidget(self.mobile_label)
         layout.addWidget(self.qr_label)
-        layout.addWidget(QLabel("手势：起点左键长按 2 秒，终点普通左键单击；生成期间暂停监听"))
+        gesture_hint = QLabel(
+            "手势：左键长按 2 秒框选起点，再左键单击终点；"
+            "右键长按 2 秒截取当前屏幕全屏。一图多题会按题号对应作答；生成期间暂停监听"
+        )
+        gesture_hint.setWordWrap(True)
+        layout.addWidget(gesture_hint)
         layout.addWidget(self.logs, 1)
 
         root = QWidget()
@@ -144,11 +152,13 @@ class MainWindow(QMainWindow):
     def save_provider_settings(self) -> None:
         deepseek_key = self.deepseek_key_input.text().strip()
         openrouter_key = self.openrouter_key_input.text().strip()
-        openrouter_model = self.openrouter_model_input.text().strip()
-        if not deepseek_key or not openrouter_key or not openrouter_model:
-            self.save_status.setText("两把 Key 和模型 ID 均不能为空")
+        openrouter_model = self.openrouter_model_input.text().strip() or settings.openrouter_model
+        if not deepseek_key and not openrouter_key:
+            self.save_status.setText("请至少填写 DeepSeek 或 OpenRouter 其中一把 Key")
             self.save_status.setStyleSheet("color: #d33;")
             return
+        if openrouter_key:
+            self.openrouter_model_input.setText(openrouter_model)
         self.deepseek_key = deepseek_key
         self.openrouter_key = openrouter_key
         self.openrouter_model = openrouter_model
@@ -156,19 +166,29 @@ class MainWindow(QMainWindow):
         self.app_settings.setValue("providers/openrouter_key", openrouter_key)
         self.app_settings.setValue("providers/openrouter_model", openrouter_model)
         self.app_settings.sync()
+        client = self._build_ai_client()
         if self.workflow is not None:
-            self.workflow.ai_client = self._build_ai_client()
-        self.set_provider("deepseek")
-        self.save_status.setText("已保存；下一题从 DeepSeek 开始")
+            self.workflow.ai_client = client
+        self.set_provider(client.current_provider)
+        if deepseek_key:
+            self.save_status.setText("已保存；有 DeepSeek Key 时下一题从 DeepSeek 开始")
+        else:
+            self.save_status.setText("已保存；将使用 OpenRouter")
         self.save_status.setStyleSheet("color: #198754;")
         self._log("Provider settings updated")
 
     def set_provider(self, provider: str) -> None:
         if provider == "openrouter":
             self.provider_label.setText(f"当前模型：OpenRouter / {self.openrouter_model}")
-            self._log("DeepSeek 额度不足，已切换 OpenRouter")
-        else:
+        elif provider == "deepseek":
             self.provider_label.setText(f"当前模型：DeepSeek / {settings.deepseek_model}")
+        else:
+            self.provider_label.setText("当前模型：未配置 Key")
+
+    def _on_provider_failover(self, provider: str) -> None:
+        self.set_provider(provider)
+        if provider == "openrouter":
+            self._log("DeepSeek 额度不足，已切换 OpenRouter")
 
     def set_overlay_visible(self, visible: bool) -> None:
         if visible:
@@ -190,10 +210,11 @@ class MainWindow(QMainWindow):
             self._log(f"Backend unavailable; mobile streaming disabled: {exc}")
 
         session_id = self.session.session_id if self.session else "local"
+        ai_client = self._build_ai_client()
         self.workflow = AssistantWorkflow(
             session_id=session_id,
             capture=ScreenCapture(),
-            ai_client=self._build_ai_client(),
+            ai_client=ai_client,
             publisher=self.publisher,
         )
         self.workflow.on_status = self.signals.status.emit
@@ -203,8 +224,11 @@ class MainWindow(QMainWindow):
         self.workflow.on_stream_delta = self.signals.stream_delta.emit
         self.workflow.on_stream_completed = self.signals.stream_completed.emit
         self.workflow.on_stream_error = self.signals.stream_error.emit
-
-        self.mouse_listener = MouseRoiListener(self._left_up, self._second_left_up)
+        self.set_provider(ai_client.current_provider)
+        if ai_client.current_provider == "none":
+            self.save_status.setText("请至少填写一把 API Key 后保存")
+            self.save_status.setStyleSheet("color: #d33;")
+        self.mouse_listener = MouseRoiListener(self._left_up, self._second_left_up, self._right_long)
         try:
             self.mouse_listener.start()
             self.workflow.start_capture()
@@ -225,6 +249,20 @@ class MainWindow(QMainWindow):
         try:
             if self.workflow is not None:
                 self.workflow.second_left_up(x, y)
+        finally:
+            if self.mouse_listener is not None:
+                self.mouse_listener.set_enabled(True)
+
+    def _right_long(self, x: int, y: int) -> None:
+        if self.workflow is None or self.mouse_listener is None:
+            return
+        self.mouse_listener.set_enabled(False)
+        threading.Thread(target=self._run_fullscreen, args=(x, y), daemon=True).start()
+
+    def _run_fullscreen(self, x: int, y: int) -> None:
+        try:
+            if self.workflow is not None:
+                self.workflow.process_fullscreen(x, y)
         finally:
             if self.mouse_listener is not None:
                 self.mouse_listener.set_enabled(True)
