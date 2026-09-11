@@ -100,6 +100,7 @@ class AssistantWorkflow:
         y: int | None = None,
         user_text: str | None = None,
         use_conversation: bool = False,
+        is_chat: bool = False,
     ) -> None:
         self.roi.reset()
         self.on_status("Fullscreen captured; analyzing...")
@@ -111,6 +112,8 @@ class AssistantWorkflow:
             started_payload["has_user_text"] = True
         if use_conversation:
             started_payload["conversation_turns"] = len(self.mobile_conversation)
+        if is_chat:
+            started_payload["chat"] = True
         try:
             png = self.capture.capture_fullscreen_png(x, y, debug_path=self._debug_path())
             self._analyze_png(

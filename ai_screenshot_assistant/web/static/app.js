@@ -8,12 +8,15 @@
   const fullscreenButton = document.getElementById("fullscreen-button");
   const questionInput = document.getElementById("question-input");
   const askButton = document.getElementById("ask-button");
+  const chatList = document.getElementById("chat-list");
   const outputEl = document.getElementById("output");
   const cursorKey = `lastEventId:${sessionId || "missing"}`;
   let lastEventId = Number(localStorage.getItem(cursorKey) || 0);
   let reconnectMs = 1000;
   let buffer = "";
   let socket = null;
+  let activeChatRequestId = null;
+  let activeAssistantBubble = null;
 
   function setConnectionStatus(value, online) {
     statusEl.textContent = value;
@@ -32,6 +35,72 @@
     selectionMessageEl.textContent = message || "等待操作";
   }
 
+  function clearEmptyChat() {
+    const empty = chatList.querySelector(".empty-chat");
+    if (empty) {
+      empty.remove();
+    }
+  }
+
+  function appendMessage(role, text, withAttachment) {
+    clearEmptyChat();
+    const item = document.createElement("div");
+    item.className = `chat-message ${role}`;
+    const bubble = document.createElement("div");
+    bubble.className = "chat-bubble";
+    if (withAttachment) {
+      const attachment = document.createElement("div");
+      attachment.className = "attachment-chip";
+      attachment.textContent = "已附带电脑全屏截图";
+      bubble.appendChild(attachment);
+    }
+    const content = document.createElement("div");
+    content.className = "chat-content";
+    content.textContent = text;
+    bubble.appendChild(content);
+    item.appendChild(bubble);
+    chatList.appendChild(item);
+    chatList.scrollTop = chatList.scrollHeight;
+    return content;
+  }
+
+  function startAssistantMessage(requestId) {
+    activeChatRequestId = requestId;
+    activeAssistantBubble = appendMessage("assistant", "分析中…", false);
+  }
+
+  function appendAssistantDelta(requestId, delta) {
+    if (!activeAssistantBubble || requestId !== activeChatRequestId) {
+      return false;
+    }
+    if (activeAssistantBubble.textContent === "分析中…") {
+      activeAssistantBubble.textContent = "";
+    }
+    activeAssistantBubble.textContent += delta || "";
+    chatList.scrollTop = chatList.scrollHeight;
+    return true;
+  }
+
+  function completeAssistantMessage(requestId, text) {
+    if (!activeAssistantBubble || requestId !== activeChatRequestId) {
+      return false;
+    }
+    activeAssistantBubble.textContent = text || activeAssistantBubble.textContent || "分析完成";
+    activeChatRequestId = null;
+    activeAssistantBubble = null;
+    chatList.scrollTop = chatList.scrollHeight;
+    return true;
+  }
+
+  function failAssistantMessage(message) {
+    if (activeAssistantBubble) {
+      activeAssistantBubble.textContent = `错误：${message || "模型调用失败"}`;
+      activeChatRequestId = null;
+      activeAssistantBubble = null;
+      chatList.scrollTop = chatList.scrollHeight;
+    }
+  }
+
   function handleEvent(event) {
     const payload = event.payload || {};
     if (event.type === "selection.status") {
@@ -39,17 +108,27 @@
     } else if (event.type === "answer.started") {
       buffer = "";
       setSelectionStatus("analyzing", "AI 正在分析，请稍候");
-      outputEl.textContent = "分析中…";
+      if (payload.chat) {
+        startAssistantMessage(event.request_id);
+        outputEl.textContent = "聊天请求分析中…";
+      } else {
+        outputEl.textContent = "分析中…";
+      }
     } else if (event.type === "answer.delta") {
       buffer += payload.delta || "";
-      outputEl.textContent = buffer || "分析中…";
+      if (!appendAssistantDelta(event.request_id, payload.delta || "")) {
+        outputEl.textContent = buffer || "分析中…";
+      }
     } else if (event.type === "answer.completed") {
       const result = payload.result || {};
       buffer = result.text || buffer || "分析完成";
-      outputEl.textContent = buffer;
+      if (!completeAssistantMessage(event.request_id, buffer)) {
+        outputEl.textContent = buffer;
+      }
       setSelectionStatus("completed", "答案已生成，可以继续框选或全屏截题");
     } else if (event.type === "answer.error") {
       buffer = "";
+      failAssistantMessage(payload.message);
       outputEl.textContent = `错误：${payload.message || "模型调用失败"}`;
       setSelectionStatus("error", "分析失败，可以重新框选或全屏截题");
     }
@@ -107,6 +186,7 @@
       updateAskButton();
       return;
     }
+    appendMessage("user", text, true);
     fullscreenButton.disabled = true;
     askButton.disabled = true;
     setSelectionStatus("capturing", "已请求电脑截全屏并发送追问");
@@ -114,7 +194,8 @@
       type: "command.fullscreen",
       payload: {
         text,
-        conversation: true
+        conversation: true,
+        chat: true
       }
     }));
     questionInput.value = "";

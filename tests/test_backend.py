@@ -74,3 +74,25 @@ def test_mobile_fullscreen_command_forwards_question_payload() -> None:
         "text": "解释第 2 题",
         "conversation": True,
     }
+
+
+def test_mobile_fullscreen_command_forwards_chat_payload() -> None:
+    client = TestClient(app)
+    session = client.post("/sessions").json()
+    session_id = session["session_id"]
+
+    with client.websocket_connect(f"/ws/desktop-commands/{session_id}") as desktop_commands:
+        with client.websocket_connect(f"/ws/mobile/{session_id}") as mobile:
+            mobile.receive_json()
+            mobile.send_text(
+                '{"type":"command.fullscreen","payload":{"text":"看一下这个空怎么填","conversation":true,"chat":true}}'
+            )
+            command = desktop_commands.receive_json()
+
+    assert command["type"] == "command.fullscreen"
+    assert command["payload"] == {
+        "source": "mobile",
+        "text": "看一下这个空怎么填",
+        "conversation": True,
+        "chat": True,
+    }

@@ -101,12 +101,95 @@ h1 { margin: 0; font-size: 20px; }
   color: var(--muted);
 }
 
-.ask-panel {
+.chatbot {
   display: grid;
   gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.025);
+  padding: 10px;
 }
 
-.ask-panel textarea {
+.chat-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.chat-subtitle {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.chat-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 180px;
+  max-height: 42vh;
+  overflow-y: auto;
+  padding: 6px 2px;
+}
+
+.empty-chat {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+  padding: 22px 8px;
+  text-align: center;
+}
+
+.chat-message {
+  display: flex;
+}
+
+.chat-message.user {
+  justify-content: flex-end;
+}
+
+.chat-message.assistant {
+  justify-content: flex-start;
+}
+
+.chat-bubble {
+  max-width: 86%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 16px;
+  line-height: 1.55;
+}
+
+.chat-message.user .chat-bubble {
+  background: #d7fff5;
+  color: #053024;
+  border-color: #7de8d1;
+}
+
+.chat-message.assistant .chat-bubble {
+  background: #0d1728;
+  color: var(--text);
+}
+
+.attachment-chip {
+  display: inline-flex;
+  max-width: 100%;
+  margin-bottom: 7px;
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: rgba(6, 32, 21, 0.1);
+  color: #07503b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.chatbot textarea {
   width: 100%;
   min-height: 88px;
   resize: vertical;
@@ -118,7 +201,7 @@ h1 { margin: 0; font-size: 20px; }
   font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
-.ask-panel textarea::placeholder {
+.chatbot textarea::placeholder {
   color: var(--muted);
 }
 

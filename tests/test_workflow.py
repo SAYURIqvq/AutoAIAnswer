@@ -142,7 +142,7 @@ def test_workflow_fullscreen_question_uses_conversation_context() -> None:
         {"role": "assistant", "content": "答案：A"},
     ]
 
-    workflow.process_fullscreen(10, 20, user_text="第 2 题为什么选 B？", use_conversation=True)
+    workflow.process_fullscreen(10, 20, user_text="第 2 题为什么选 B？", use_conversation=True, is_chat=True)
 
     assert ai_client.calls[0]["png_bytes"] == b"fullpng"
     assert ai_client.calls[0]["user_text"] == "第 2 题为什么选 B？"
@@ -161,4 +161,5 @@ def test_workflow_fullscreen_question_uses_conversation_context() -> None:
         "mode": "fullscreen",
         "has_user_text": True,
         "conversation_turns": 2,
+        "chat": True,
     }

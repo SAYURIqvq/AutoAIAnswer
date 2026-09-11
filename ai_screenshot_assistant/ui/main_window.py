@@ -311,13 +311,14 @@ class MainWindow(QMainWindow):
         y: int,
         user_text: str | None = None,
         use_conversation: bool = False,
+        is_chat: bool = False,
     ) -> None:
         if self.workflow is None or self.mouse_listener is None:
             return
         self.mouse_listener.set_enabled(False)
         threading.Thread(
             target=self._run_fullscreen,
-            args=(x, y, user_text, use_conversation),
+            args=(x, y, user_text, use_conversation, is_chat),
             daemon=True,
         ).start()
 
@@ -328,6 +329,7 @@ class MainWindow(QMainWindow):
     def _capture_current_screen_from_mobile(self, payload: dict[str, Any]) -> None:
         user_text = str(payload.get("text") or "").strip()
         use_conversation = bool(payload.get("conversation"))
+        is_chat = bool(payload.get("chat"))
         if user_text:
             self._log("手机端请求截取当前屏幕并追问")
         else:
@@ -338,6 +340,7 @@ class MainWindow(QMainWindow):
             center.y(),
             user_text=user_text or None,
             use_conversation=use_conversation,
+            is_chat=is_chat,
         )
 
     def _handle_desktop_command(self, command: dict[str, Any]) -> None:
@@ -395,6 +398,7 @@ class MainWindow(QMainWindow):
         y: int,
         user_text: str | None = None,
         use_conversation: bool = False,
+        is_chat: bool = False,
     ) -> None:
         try:
             if self.workflow is not None:
@@ -403,6 +407,7 @@ class MainWindow(QMainWindow):
                     y,
                     user_text=user_text,
                     use_conversation=use_conversation,
+                    is_chat=is_chat,
                 )
         finally:
             if self.mouse_listener is not None:

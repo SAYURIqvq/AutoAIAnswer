@@ -141,6 +141,8 @@ def _mobile_command_payload(data: dict[str, Any]) -> dict[str, Any]:
         payload["text"] = text[:4000]
     if bool(source_payload.get("conversation") or data.get("conversation")):
         payload["conversation"] = True
+    if bool(source_payload.get("chat") or data.get("chat")):
+        payload["chat"] = True
     return payload
 
 
