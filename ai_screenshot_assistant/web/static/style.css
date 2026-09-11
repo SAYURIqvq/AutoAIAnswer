@@ -83,6 +83,24 @@ h1 { margin: 0; font-size: 20px; }
 .selection-status.error { color: #ff7b86; }
 .selection-status.error .status-dot { background: #ff7b86; }
 
+.capture-button {
+  width: 100%;
+  min-height: 46px;
+  border: 1px solid color-mix(in srgb, var(--accent), var(--line) 35%);
+  border-radius: 8px;
+  background: var(--accent);
+  color: #062015;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.capture-button:disabled {
+  cursor: not-allowed;
+  border-color: var(--line);
+  background: #263247;
+  color: var(--muted);
+}
+
 @keyframes pulse {
   50% { opacity: 0.3; transform: scale(0.75); }
 }

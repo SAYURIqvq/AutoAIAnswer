@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import json
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
@@ -76,6 +77,22 @@ async def desktop_ws(websocket: WebSocket, session_id: str) -> None:
         await _send_mobile(session, _system_event(session_id, "device.disconnected", {"device": "desktop"}))
 
 
+@app.websocket("/ws/desktop-commands/{session_id}")
+async def desktop_commands_ws(websocket: WebSocket, session_id: str) -> None:
+    session = manager.get(session_id)
+    if session is None:
+        await websocket.close(code=4404)
+        return
+    await websocket.accept()
+    session.desktop_commands = websocket
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        if session.desktop_commands is websocket:
+            session.desktop_commands = None
+
+
 @app.websocket("/ws/mobile/{session_id}")
 async def mobile_ws(websocket: WebSocket, session_id: str, last_event_id: int = 0) -> None:
     session = manager.get(session_id)
@@ -89,7 +106,8 @@ async def mobile_ws(websocket: WebSocket, session_id: str, last_event_id: int = 
     await websocket.send_json(_system_event(session_id, "device.connected", {"device": "mobile"}))
     try:
         while True:
-            await websocket.receive_text()
+            message = await websocket.receive_text()
+            await _handle_mobile_message(session, message)
     except WebSocketDisconnect:
         if session.mobile is websocket:
             session.mobile = None
@@ -100,6 +118,19 @@ async def _send_mobile(session: Any, event: dict[str, Any]) -> None:
         await session.mobile.send_json(event)
 
 
+async def _handle_mobile_message(session: Any, message: str) -> None:
+    try:
+        data = json.loads(message)
+    except json.JSONDecodeError:
+        return
+    if data.get("type") != "command.fullscreen":
+        return
+    if session.desktop_commands is not None:
+        await session.desktop_commands.send_json(
+            _system_event(session.session_id, "command.fullscreen", {"source": "mobile"})
+        )
+
+
 def _system_event(session_id: str, event_type: str, payload: dict[str, Any]) -> dict[str, Any]:
     return {
         "type": event_type,
@@ -108,4 +139,3 @@ def _system_event(session_id: str, event_type: str, payload: dict[str, Any]) -> 
         "timestamp": utc_now_iso(),
         "payload": payload,
     }
-

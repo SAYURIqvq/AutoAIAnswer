@@ -26,6 +26,7 @@ from ai_screenshot_assistant.backend_api import BackendApi, BackendSession
 from ai_screenshot_assistant.capture.screenshot import ScreenCapture
 from ai_screenshot_assistant.config import settings
 from ai_screenshot_assistant.core.workflow import AssistantWorkflow
+from ai_screenshot_assistant.desktop_command_client import DesktopCommandClient
 from ai_screenshot_assistant.input.mouse_listener import MouseRoiListener
 from ai_screenshot_assistant.ui.streaming_overlay import StreamingOverlay
 from ai_screenshot_assistant.websocket_client import DesktopWebSocketPublisher
@@ -40,6 +41,7 @@ class UiSignals(QObject):
     stream_delta = Signal(str)
     stream_completed = Signal(str)
     stream_error = Signal(str)
+    mobile_fullscreen_requested = Signal()
 
 
 class MainWindow(QMainWindow):
@@ -75,8 +77,11 @@ class MainWindow(QMainWindow):
 
         self.session: BackendSession | None = None
         self.publisher: DesktopWebSocketPublisher | None = None
+        self.command_client: DesktopCommandClient | None = None
         self.workflow: AssistantWorkflow | None = None
         self.mouse_listener: MouseRoiListener | None = None
+        self.region_gesture_enabled = self._settings_bool("gestures/region_enabled", True)
+        self.fullscreen_gesture_enabled = self._settings_bool("gestures/fullscreen_enabled", True)
 
         self.status_label = QLabel("状态：准备中")
         self.provider_label = QLabel("当前模型：DeepSeek / deepseek-v4-flash-vision-exp")
@@ -94,6 +99,12 @@ class MainWindow(QMainWindow):
         self.overlay_toggle = QCheckBox("显示桌面流式悬浮答案")
         self.overlay_toggle.setChecked(False)
         self.overlay_toggle.toggled.connect(self.set_overlay_visible)
+        self.region_gesture_toggle = QCheckBox("开启左键长按 2 秒框选手势")
+        self.region_gesture_toggle.setChecked(self.region_gesture_enabled)
+        self.region_gesture_toggle.toggled.connect(self.set_region_gesture_enabled)
+        self.fullscreen_gesture_toggle = QCheckBox("开启右键长按 2 秒全屏截图手势")
+        self.fullscreen_gesture_toggle.setChecked(self.fullscreen_gesture_enabled)
+        self.fullscreen_gesture_toggle.toggled.connect(self.set_fullscreen_gesture_enabled)
         self.fullscreen_button = QPushButton("截取当前屏幕")
         self.fullscreen_button.clicked.connect(self._capture_current_screen)
         self.mobile_label = QLabel("手机端：正在创建配对链接")
@@ -117,6 +128,8 @@ class MainWindow(QMainWindow):
         layout.addLayout(provider_form)
         layout.addLayout(save_row)
         layout.addWidget(self.overlay_toggle)
+        layout.addWidget(self.region_gesture_toggle)
+        layout.addWidget(self.fullscreen_gesture_toggle)
         layout.addWidget(self.fullscreen_button)
         layout.addWidget(self.mobile_label)
         layout.addWidget(self.qr_label)
@@ -128,8 +141,15 @@ class MainWindow(QMainWindow):
         root = QWidget()
         root.setLayout(layout)
         self.setCentralWidget(root)
+        self.signals.mobile_fullscreen_requested.connect(self._capture_current_screen_from_mobile)
         self._setup_workflow()
         QTimer.singleShot(600, self._maybe_prompt_macos_permissions)
+
+    def _settings_bool(self, key: str, default: bool) -> bool:
+        value = self.app_settings.value(key, default)
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
     def _build_ai_client(self) -> FailoverVisionClient:
         deepseek = ProviderConfig(
@@ -200,10 +220,27 @@ class MainWindow(QMainWindow):
         else:
             self.overlay.hide()
 
+    def set_region_gesture_enabled(self, enabled: bool) -> None:
+        self.region_gesture_enabled = enabled
+        self.app_settings.setValue("gestures/region_enabled", enabled)
+        self.app_settings.sync()
+        self._log(f"左键框选手势：{'开启' if enabled else '关闭'}")
+
+    def set_fullscreen_gesture_enabled(self, enabled: bool) -> None:
+        self.fullscreen_gesture_enabled = enabled
+        self.app_settings.setValue("gestures/fullscreen_enabled", enabled)
+        self.app_settings.sync()
+        self._log(f"右键全屏手势：{'开启' if enabled else '关闭'}")
+
     def _setup_workflow(self) -> None:
         try:
             self.session = BackendApi(self.backend_url).create_session()
             self.publisher = DesktopWebSocketPublisher(self.backend_url, self.session.session_id)
+            self.command_client = DesktopCommandClient(
+                self.backend_url,
+                self.session.session_id,
+                self._handle_desktop_command,
+            )
             self.mobile_label.setText(f"手机端：{self.session.pair_url}")
             self._set_qr(self.session.pair_url)
             self._log(f"Mobile URL: {self.session.pair_url}")
@@ -239,10 +276,16 @@ class MainWindow(QMainWindow):
             self._log(f"Input listener not active: {exc}")
 
     def _left_up(self, x: int, y: int) -> None:
+        if not self.region_gesture_enabled:
+            self._log("左键框选手势已关闭")
+            return
         if self.workflow is not None:
             self.workflow.left_up(x, y)
 
     def _second_left_up(self, x: int, y: int) -> None:
+        if not self.region_gesture_enabled:
+            self._log("左键框选手势已关闭")
+            return
         if self.workflow is None or self.mouse_listener is None:
             return
         self.mouse_listener.set_enabled(False)
@@ -257,6 +300,12 @@ class MainWindow(QMainWindow):
                 self.mouse_listener.set_enabled(True)
 
     def _right_long(self, x: int, y: int) -> None:
+        if not self.fullscreen_gesture_enabled:
+            self._log("右键全屏手势已关闭")
+            return
+        self._capture_fullscreen_at(x, y)
+
+    def _capture_fullscreen_at(self, x: int, y: int) -> None:
         if self.workflow is None or self.mouse_listener is None:
             return
         self.mouse_listener.set_enabled(False)
@@ -264,7 +313,15 @@ class MainWindow(QMainWindow):
 
     def _capture_current_screen(self) -> None:
         center = self.frameGeometry().center()
-        self._right_long(center.x(), center.y())
+        self._capture_fullscreen_at(center.x(), center.y())
+
+    def _capture_current_screen_from_mobile(self) -> None:
+        self._log("手机端请求截取当前屏幕")
+        self._capture_current_screen()
+
+    def _handle_desktop_command(self, command: dict[str, Any]) -> None:
+        if command.get("type") == "command.fullscreen":
+            self.signals.mobile_fullscreen_requested.emit()
 
     def _gesture_hint_text(self) -> str:
         if sys.platform == "darwin":
@@ -347,4 +404,6 @@ class MainWindow(QMainWindow):
             self.mouse_listener.stop()
         if self.publisher is not None:
             self.publisher.close()
+        if self.command_client is not None:
+            self.command_client.close()
         super().closeEvent(event)

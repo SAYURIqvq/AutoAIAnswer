@@ -16,6 +16,7 @@ class Session:
     created_at: datetime
     expire_at: datetime
     desktop: WebSocket | None = None
+    desktop_commands: WebSocket | None = None
     mobile: WebSocket | None = None
     events: list[dict[str, Any]] = field(default_factory=list)
     next_event_id: int = 1
@@ -66,4 +67,3 @@ class SessionManager:
 
 
 manager = SessionManager()
-
