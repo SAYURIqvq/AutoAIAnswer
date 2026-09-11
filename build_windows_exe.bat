@@ -6,7 +6,7 @@ if not exist .venv (
 )
 call .venv\Scripts\activate
 python -m pip install -r requirements.txt
-pyinstaller --noconfirm --clean --onefile --windowed --name AI_Assistant ^
+pyinstaller --noconfirm --clean --onefile --windowed --name AutoAIAnswer ^
   --add-data "ai_screenshot_assistant\web\static;ai_screenshot_assistant\web\static" ^
   --exclude-module IPython ^
   --exclude-module pytest ^
@@ -24,4 +24,4 @@ pyinstaller --noconfirm --clean --onefile --windowed --name AI_Assistant ^
   --exclude-module cv2 ^
   --exclude-module tkinter ^
   main.py
-echo Built: dist\AI_Assistant.exe
+echo Built: dist\AutoAIAnswer.exe

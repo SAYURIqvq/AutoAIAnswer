@@ -23,7 +23,12 @@ class CapturePort(Protocol):
 
 
 class AIPort(Protocol):
-    def analyze_image_stream(self, png_bytes: bytes): ...
+    def analyze_image_stream(
+        self,
+        png_bytes: bytes,
+        user_text: str | None = None,
+        conversation: list[dict[str, str]] | None = None,
+    ): ...
 
 
 class PublisherPort(Protocol):
@@ -52,6 +57,7 @@ class AssistantWorkflow:
         self.on_stream_delta = lambda delta: None
         self.on_stream_completed = lambda text: None
         self.on_stream_error = lambda message: None
+        self.mobile_conversation: list[dict[str, str]] = []
 
     def start_capture(self) -> None:
         self.roi.start()
@@ -88,15 +94,33 @@ class AssistantWorkflow:
         except Exception as exc:
             self._fail(str(exc), request_id=request_id)
 
-    def process_fullscreen(self, x: int | None = None, y: int | None = None) -> None:
+    def process_fullscreen(
+        self,
+        x: int | None = None,
+        y: int | None = None,
+        user_text: str | None = None,
+        use_conversation: bool = False,
+    ) -> None:
         self.roi.reset()
         self.on_status("Fullscreen captured; analyzing...")
         self._publish_selection_status("capturing", "已截取当前屏幕全屏，正在发送给 AI")
         request_id = uuid4().hex
         started_at = time.perf_counter()
+        started_payload: dict[str, Any] = {"mode": "fullscreen"}
+        if user_text:
+            started_payload["has_user_text"] = True
+        if use_conversation:
+            started_payload["conversation_turns"] = len(self.mobile_conversation)
         try:
             png = self.capture.capture_fullscreen_png(x, y, debug_path=self._debug_path())
-            self._analyze_png(png, request_id, started_at, {"mode": "fullscreen"})
+            self._analyze_png(
+                png,
+                request_id,
+                started_at,
+                started_payload,
+                user_text=user_text,
+                use_conversation=use_conversation,
+            )
         except Exception as exc:
             self._fail(str(exc), request_id=request_id)
 
@@ -109,16 +133,21 @@ class AssistantWorkflow:
         request_id: str,
         started_at: float,
         started_payload: dict[str, Any],
+        user_text: str | None = None,
+        use_conversation: bool = False,
     ) -> None:
         self._publish_selection_status("analyzing", "截图成功，AI 正在分析全部题目")
         self.on_stream_started()
         self._publish("answer.started", request_id, started_payload)
         chunks: list[str] = []
-        for delta in self.ai_client.analyze_image_stream(png):
+        conversation = list(self.mobile_conversation) if use_conversation else None
+        for delta in self.ai_client.analyze_image_stream(png, user_text=user_text, conversation=conversation):
             chunks.append(delta)
             self.on_stream_delta(delta)
             self._publish("answer.delta", request_id, {"delta": delta})
         text = "".join(chunks)
+        if use_conversation and user_text and user_text.strip():
+            self._remember_mobile_turn(user_text.strip(), text)
         result = parse_ai_result(text)
         payload = {
             "result": {
@@ -133,6 +162,15 @@ class AssistantWorkflow:
         self.on_stream_completed(text)
         self.on_result(payload["result"])
         self._publish_selection_status("completed", "答案已生成，可以继续框选或全屏截题")
+
+    def _remember_mobile_turn(self, user_text: str, assistant_text: str) -> None:
+        self.mobile_conversation.extend(
+            [
+                {"role": "user", "content": user_text},
+                {"role": "assistant", "content": assistant_text},
+            ]
+        )
+        self.mobile_conversation = self.mobile_conversation[-12:]
 
     def _publish(self, event_type: str, request_id: str, payload: dict) -> None:
         event = Event(type=event_type, session_id=self.session_id, request_id=request_id, payload=payload)

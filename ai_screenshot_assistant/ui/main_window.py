@@ -41,7 +41,7 @@ class UiSignals(QObject):
     stream_delta = Signal(str)
     stream_completed = Signal(str)
     stream_error = Signal(str)
-    mobile_fullscreen_requested = Signal()
+    mobile_fullscreen_requested = Signal(dict)
 
 
 class MainWindow(QMainWindow):
@@ -305,23 +305,45 @@ class MainWindow(QMainWindow):
             return
         self._capture_fullscreen_at(x, y)
 
-    def _capture_fullscreen_at(self, x: int, y: int) -> None:
+    def _capture_fullscreen_at(
+        self,
+        x: int,
+        y: int,
+        user_text: str | None = None,
+        use_conversation: bool = False,
+    ) -> None:
         if self.workflow is None or self.mouse_listener is None:
             return
         self.mouse_listener.set_enabled(False)
-        threading.Thread(target=self._run_fullscreen, args=(x, y), daemon=True).start()
+        threading.Thread(
+            target=self._run_fullscreen,
+            args=(x, y, user_text, use_conversation),
+            daemon=True,
+        ).start()
 
     def _capture_current_screen(self) -> None:
         center = self.frameGeometry().center()
         self._capture_fullscreen_at(center.x(), center.y())
 
-    def _capture_current_screen_from_mobile(self) -> None:
-        self._log("手机端请求截取当前屏幕")
-        self._capture_current_screen()
+    def _capture_current_screen_from_mobile(self, payload: dict[str, Any]) -> None:
+        user_text = str(payload.get("text") or "").strip()
+        use_conversation = bool(payload.get("conversation"))
+        if user_text:
+            self._log("手机端请求截取当前屏幕并追问")
+        else:
+            self._log("手机端请求截取当前屏幕")
+        center = self.frameGeometry().center()
+        self._capture_fullscreen_at(
+            center.x(),
+            center.y(),
+            user_text=user_text or None,
+            use_conversation=use_conversation,
+        )
 
     def _handle_desktop_command(self, command: dict[str, Any]) -> None:
         if command.get("type") == "command.fullscreen":
-            self.signals.mobile_fullscreen_requested.emit()
+            payload = command.get("payload")
+            self.signals.mobile_fullscreen_requested.emit(payload if isinstance(payload, dict) else {})
 
     def _gesture_hint_text(self) -> str:
         if sys.platform == "darwin":
@@ -367,10 +389,21 @@ class MainWindow(QMainWindow):
         elif not screen_recording_allowed():
             open_privacy_pane("Privacy_ScreenCapture")
 
-    def _run_fullscreen(self, x: int, y: int) -> None:
+    def _run_fullscreen(
+        self,
+        x: int,
+        y: int,
+        user_text: str | None = None,
+        use_conversation: bool = False,
+    ) -> None:
         try:
             if self.workflow is not None:
-                self.workflow.process_fullscreen(x, y)
+                self.workflow.process_fullscreen(
+                    x,
+                    y,
+                    user_text=user_text,
+                    use_conversation=use_conversation,
+                )
         finally:
             if self.mouse_listener is not None:
                 self.mouse_listener.set_enabled(True)

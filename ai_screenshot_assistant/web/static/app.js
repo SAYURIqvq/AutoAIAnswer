@@ -6,6 +6,8 @@
   const selectionEl = document.getElementById("selection-status");
   const selectionMessageEl = document.getElementById("selection-message");
   const fullscreenButton = document.getElementById("fullscreen-button");
+  const questionInput = document.getElementById("question-input");
+  const askButton = document.getElementById("ask-button");
   const outputEl = document.getElementById("output");
   const cursorKey = `lastEventId:${sessionId || "missing"}`;
   let lastEventId = Number(localStorage.getItem(cursorKey) || 0);
@@ -17,6 +19,12 @@
     statusEl.textContent = value;
     statusEl.classList.toggle("online", Boolean(online));
     fullscreenButton.disabled = !online;
+    updateAskButton();
+  }
+
+  function updateAskButton() {
+    const online = socket && socket.readyState === WebSocket.OPEN;
+    askButton.disabled = !online || !questionInput.value.trim();
   }
 
   function setSelectionStatus(state, message) {
@@ -84,6 +92,36 @@
     setTimeout(function () {
       if (socket && socket.readyState === WebSocket.OPEN) {
         fullscreenButton.disabled = false;
+      }
+    }, 1500);
+  });
+
+  questionInput.addEventListener("input", updateAskButton);
+
+  askButton.addEventListener("click", function () {
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      return;
+    }
+    const text = questionInput.value.trim();
+    if (!text) {
+      updateAskButton();
+      return;
+    }
+    fullscreenButton.disabled = true;
+    askButton.disabled = true;
+    setSelectionStatus("capturing", "已请求电脑截全屏并发送追问");
+    socket.send(JSON.stringify({
+      type: "command.fullscreen",
+      payload: {
+        text,
+        conversation: true
+      }
+    }));
+    questionInput.value = "";
+    setTimeout(function () {
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        fullscreenButton.disabled = false;
+        updateAskButton();
       }
     }, 1500);
   });

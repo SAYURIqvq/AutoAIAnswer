@@ -53,3 +53,24 @@ def test_mobile_fullscreen_command_reaches_desktop_command_socket() -> None:
 
     assert command["type"] == "command.fullscreen"
     assert command["payload"] == {"source": "mobile"}
+
+
+def test_mobile_fullscreen_command_forwards_question_payload() -> None:
+    client = TestClient(app)
+    session = client.post("/sessions").json()
+    session_id = session["session_id"]
+
+    with client.websocket_connect(f"/ws/desktop-commands/{session_id}") as desktop_commands:
+        with client.websocket_connect(f"/ws/mobile/{session_id}") as mobile:
+            mobile.receive_json()
+            mobile.send_text(
+                '{"type":"command.fullscreen","payload":{"text":"解释第 2 题","conversation":true}}'
+            )
+            command = desktop_commands.receive_json()
+
+    assert command["type"] == "command.fullscreen"
+    assert command["payload"] == {
+        "source": "mobile",
+        "text": "解释第 2 题",
+        "conversation": True,
+    }

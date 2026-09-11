@@ -4,7 +4,7 @@ Windows / macOS 截图搜题助手。通过全局鼠标手势框选屏幕题目�
 
 ## 直接下载
 
-[下载 Windows 单文件版 AI_Assistant.exe](https://github.com/SAYURIqvq/AutoAIAnswer/releases/latest/download/AI_Assistant.exe)
+[下载 Windows 版 AutoAIAnswer-Windows.zip](https://github.com/SAYURIqvq/AutoAIAnswer/releases/latest/download/AutoAIAnswer-Windows.zip)
 
 [下载 macOS 版 AutoAIAnswer-macOS.dmg](https://github.com/SAYURIqvq/AutoAIAnswer/releases/latest/download/AutoAIAnswer-macOS.dmg)
 
@@ -13,9 +13,9 @@ Windows / macOS 截图搜题助手。通过全局鼠标手势框选屏幕题目�
 ### 在 GitHub 页面中找到下载文件
 
 1. 在仓库首页右侧找到 **Releases**。
-2. 点击最新版本 **AutoAIAnswer v0.2.3**。
+2. 点击最新版本 **AutoAIAnswer v0.2.5**。
 3. 进入发布页面后展开 **Assets**。
-4. Windows 点击 **AI_Assistant.exe**；macOS 点击 **AutoAIAnswer-macOS.dmg**。
+4. Windows 点击 **AutoAIAnswer-Windows.zip**；macOS 点击 **AutoAIAnswer-macOS.dmg**。
 
 如果没有看到右侧栏，也可以直接点击上方的“下载 Windows 单文件版”链接，或打开 [Releases 页面](https://github.com/SAYURIqvq/AutoAIAnswer/releases/latest)。
 
@@ -51,6 +51,7 @@ Windows / macOS 截图搜题助手。通过全局鼠标手势框选屏幕题目�
 - DeepSeek Key、OpenRouter Key 和模型设置可在桌面界面保存
 - 左键长按 2 秒框选题目；右键长按 2 秒截取当前屏幕全屏（macOS 也可用 Control+左键，或窗口内「截取当前屏幕」）
 - 手机二维码配对，答案与解析在单一输出框中实时流式显示
+- 手机端可一键让电脑截全屏，也可输入追问后截全屏并发送给 AI，支持围绕同一截图任务连续追问
 - 11px、约 18% 不透明度的水印式桌面悬浮答案，可拖动、置顶并记忆位置
 - 模型生成期间暂停鼠标手势，避免误触
 
@@ -61,7 +62,8 @@ Windows / macOS 截图搜题助手。通过全局鼠标手势框选屏幕题目�
 3. 用手机扫描桌面窗口中的二维码并保持页面打开。
 4. 框选题目：在起点按住左键至少 2 秒，松开后移动到终点，再普通单击一次左键。
 5. 全屏截题：在题目所在屏幕按住右键 2 秒后松开；macOS 也可用 Control+左键长按，或点击窗口里的「截取当前屏幕」。
-6. 程序截图并分析，多题会按题号对应输出；答案会实时显示在手机端，若开启悬浮答案也会同步显示在桌面。
+6. 手机端也可以点击「截全屏」让电脑立即截取当前屏幕；需要补充条件或追问时，在输入框写问题后点击「截全屏并提问」。
+7. 程序截图并分析，多题会按题号对应输出；答案会实时显示在手机端，若开启悬浮答案也会同步显示在桌面。
 
 Windows 首次运行可能询问防火墙权限，请允许程序访问“专用网络”，否则手机可能无法连接电脑的 8000 端口。
 
@@ -133,7 +135,7 @@ Windows:
 build_windows_exe.bat
 ```
 
-生成文件为 `dist\AI_Assistant.exe`。
+生成文件为 `dist\AutoAIAnswer.exe`。
 
 macOS:
 

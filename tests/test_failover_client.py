@@ -9,7 +9,7 @@ class FakeClient:
         self.error = error
         self.calls = 0
 
-    def analyze_image_stream(self, _png):
+    def analyze_image_stream(self, _png, user_text=None, conversation=None):
         self.calls += 1
         if self.error is not None:
             raise self.error
@@ -111,4 +111,3 @@ def test_deepseek_402_without_openrouter_key_does_not_switch() -> None:
         raise AssertionError("402 without OpenRouter key should raise")
     assert client.current_provider == "deepseek"
     assert client.openrouter.calls == 0
-

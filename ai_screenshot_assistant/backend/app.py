@@ -126,9 +126,22 @@ async def _handle_mobile_message(session: Any, message: str) -> None:
     if data.get("type") != "command.fullscreen":
         return
     if session.desktop_commands is not None:
+        payload = _mobile_command_payload(data)
         await session.desktop_commands.send_json(
-            _system_event(session.session_id, "command.fullscreen", {"source": "mobile"})
+            _system_event(session.session_id, "command.fullscreen", payload)
         )
+
+
+def _mobile_command_payload(data: dict[str, Any]) -> dict[str, Any]:
+    payload: dict[str, Any] = {"source": "mobile"}
+    source_payload = data.get("payload") if isinstance(data.get("payload"), dict) else {}
+    raw_text = source_payload.get("text") or data.get("text")
+    text = str(raw_text or "").strip()
+    if text:
+        payload["text"] = text[:4000]
+    if bool(source_payload.get("conversation") or data.get("conversation")):
+        payload["conversation"] = True
+    return payload
 
 
 def _system_event(session_id: str, event_type: str, payload: dict[str, Any]) -> dict[str, Any]:

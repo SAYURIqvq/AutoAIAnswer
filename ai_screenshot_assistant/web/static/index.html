@@ -17,6 +17,14 @@
         <span id="selection-message">左键长按 2 秒框选，或右键长按 2 秒全屏</span>
       </div>
       <button class="capture-button" id="fullscreen-button" type="button" disabled>截全屏</button>
+      <section class="ask-panel" aria-label="截图追问">
+        <textarea
+          id="question-input"
+          rows="3"
+          placeholder="输入补充问题或追问，可结合当前全屏截图连续对话"
+        ></textarea>
+        <button class="capture-button secondary" id="ask-button" type="button" disabled>截全屏并提问</button>
+      </section>
       <pre class="output" id="output">等待电脑端发送题目…</pre>
     </main>
     <script>window.SESSION_ID = "__SESSION_ID__";</script>

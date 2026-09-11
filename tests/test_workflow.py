@@ -18,7 +18,17 @@ class FakeCapture:
 
 
 class FakeAI:
-    def analyze_image_stream(self, png_bytes):
+    def __init__(self):
+        self.calls = []
+
+    def analyze_image_stream(self, png_bytes, user_text=None, conversation=None):
+        self.calls.append(
+            {
+                "png_bytes": png_bytes,
+                "user_text": user_text,
+                "conversation": conversation,
+            }
+        )
         yield '{"answer":"B",'
         yield '"reason":"TCP reliable",'
         yield '"confidence":"0.95"}'
@@ -115,3 +125,40 @@ def test_workflow_fullscreen_streams_and_completes() -> None:
     ]
     assert publisher.events[2]["payload"] == {"mode": "fullscreen"}
 
+
+def test_workflow_fullscreen_question_uses_conversation_context() -> None:
+    publisher = FakePublisher()
+    capture = FakeCapture()
+    ai_client = FakeAI()
+    workflow = AssistantWorkflow(
+        session_id="s1",
+        capture=capture,
+        ai_client=ai_client,
+        publisher=publisher,
+        app_settings=replace(settings, save_debug_image=False),
+    )
+    workflow.mobile_conversation = [
+        {"role": "user", "content": "先看第 1 题"},
+        {"role": "assistant", "content": "答案：A"},
+    ]
+
+    workflow.process_fullscreen(10, 20, user_text="第 2 题为什么选 B？", use_conversation=True)
+
+    assert ai_client.calls[0]["png_bytes"] == b"fullpng"
+    assert ai_client.calls[0]["user_text"] == "第 2 题为什么选 B？"
+    assert ai_client.calls[0]["conversation"] == [
+        {"role": "user", "content": "先看第 1 题"},
+        {"role": "assistant", "content": "答案：A"},
+    ]
+    assert workflow.mobile_conversation[-2:] == [
+        {"role": "user", "content": "第 2 题为什么选 B？"},
+        {
+            "role": "assistant",
+            "content": '{"answer":"B","reason":"TCP reliable","confidence":"0.95"}',
+        },
+    ]
+    assert publisher.events[2]["payload"] == {
+        "mode": "fullscreen",
+        "has_user_text": True,
+        "conversation_turns": 2,
+    }

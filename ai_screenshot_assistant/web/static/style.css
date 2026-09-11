@@ -101,6 +101,38 @@ h1 { margin: 0; font-size: 20px; }
   color: var(--muted);
 }
 
+.ask-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.ask-panel textarea {
+  width: 100%;
+  min-height: 88px;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #0d1728;
+  color: var(--text);
+  padding: 12px;
+  font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.ask-panel textarea::placeholder {
+  color: var(--muted);
+}
+
+.capture-button.secondary {
+  background: #d7fff5;
+  color: #053024;
+}
+
+.capture-button.secondary:disabled {
+  border-color: var(--line);
+  background: #263247;
+  color: var(--muted);
+}
+
 @keyframes pulse {
   50% { opacity: 0.3; transform: scale(0.75); }
 }
