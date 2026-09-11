@@ -25,6 +25,7 @@ def main() -> int:
         backend_url = backend.start()
 
     app = QApplication(sys.argv)
+    app.setQuitOnLastWindowClosed(False)
     window = MainWindow(backend_url=backend_url)
     window.show()
     return app.exec()

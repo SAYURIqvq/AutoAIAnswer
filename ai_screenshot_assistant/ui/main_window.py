@@ -6,16 +6,20 @@ import threading
 from typing import Any
 
 from PySide6.QtCore import QObject, QSettings, QTimer, Signal
-from PySide6.QtGui import QCloseEvent, QPixmap
+from PySide6.QtGui import QAction, QCloseEvent, QPixmap
 from PySide6.QtWidgets import (
+    QApplication,
     QCheckBox,
     QFormLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QPushButton,
+    QStyle,
+    QSystemTrayIcon,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -48,7 +52,7 @@ class MainWindow(QMainWindow):
     def __init__(self, backend_url: str | None = None) -> None:
         super().__init__()
         self.backend_url = backend_url or settings.backend_url
-        self.setWindowTitle("AI 截图搜题助手")
+        self.setWindowTitle("QQ音乐")
         self.setMinimumSize(560, 660)
         self.app_settings = QSettings("AI Screenshot Assistant", "Desktop")
 
@@ -80,6 +84,8 @@ class MainWindow(QMainWindow):
         self.command_client: DesktopCommandClient | None = None
         self.workflow: AssistantWorkflow | None = None
         self.mouse_listener: MouseRoiListener | None = None
+        self._force_quit = False
+        self.tray_icon: QSystemTrayIcon | None = None
         self.region_gesture_enabled = self._settings_bool("gestures/region_enabled", True)
         self.fullscreen_gesture_enabled = self._settings_bool("gestures/fullscreen_enabled", True)
 
@@ -142,8 +148,51 @@ class MainWindow(QMainWindow):
         root.setLayout(layout)
         self.setCentralWidget(root)
         self.signals.mobile_fullscreen_requested.connect(self._capture_current_screen_from_mobile)
+        self._setup_tray_icon()
         self._setup_workflow()
         QTimer.singleShot(600, self._maybe_prompt_macos_permissions)
+
+    def _setup_tray_icon(self) -> None:
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            self._log("System tray unavailable; close will exit directly")
+            return
+        icon = self.windowIcon()
+        if icon.isNull():
+            icon = self.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon)
+            self.setWindowIcon(icon)
+        show_action = QAction("显示主窗口", self)
+        show_action.triggered.connect(self.show_main_window)
+        capture_action = QAction("截取当前屏幕", self)
+        capture_action.triggered.connect(self._capture_current_screen)
+        quit_action = QAction("退出", self)
+        quit_action.triggered.connect(self.quit_from_tray)
+        menu = QMenu(self)
+        menu.addAction(show_action)
+        menu.addAction(capture_action)
+        menu.addSeparator()
+        menu.addAction(quit_action)
+        self.tray_icon = QSystemTrayIcon(icon, self)
+        self.tray_icon.setToolTip("AI 截图搜题助手")
+        self.tray_icon.setContextMenu(menu)
+        self.tray_icon.activated.connect(self._on_tray_activated)
+        self.tray_icon.show()
+
+    def _on_tray_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
+        if reason in {
+            QSystemTrayIcon.ActivationReason.Trigger,
+            QSystemTrayIcon.ActivationReason.DoubleClick,
+        }:
+            self.show_main_window()
+
+    def show_main_window(self) -> None:
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+
+    def quit_from_tray(self) -> None:
+        self._force_quit = True
+        self.close()
+        QApplication.quit()
 
     def _settings_bool(self, key: str, default: bool) -> bool:
         value = self.app_settings.value(key, default)
@@ -437,6 +486,31 @@ class MainWindow(QMainWindow):
         self.qr_label.setPixmap(pixmap.scaledToWidth(160))
 
     def closeEvent(self, event: QCloseEvent) -> None:
+        if not self._force_quit and self.tray_icon is not None and self.tray_icon.isVisible():
+            message = QMessageBox(self)
+            message.setWindowTitle("关闭 AI 截图搜题助手")
+            message.setText("要最小化到右下角托盘继续运行，还是直接退出？")
+            to_tray = message.addButton("最小化到托盘", QMessageBox.ButtonRole.AcceptRole)
+            exit_app = message.addButton("直接退出", QMessageBox.ButtonRole.DestructiveRole)
+            cancel = message.addButton("取消", QMessageBox.ButtonRole.RejectRole)
+            message.setDefaultButton(to_tray)
+            message.exec()
+            clicked = message.clickedButton()
+            if clicked is cancel:
+                event.ignore()
+                return
+            if clicked is to_tray:
+                event.ignore()
+                self.hide()
+                self.tray_icon.showMessage(
+                    "AI 截图搜题助手仍在运行",
+                    "可从右下角托盘图标恢复窗口或退出。",
+                    QSystemTrayIcon.MessageIcon.Information,
+                    2500,
+                )
+                return
+            if clicked is exit_app:
+                self._force_quit = True
         self.overlay.close()
         if self.mouse_listener is not None:
             self.mouse_listener.stop()
@@ -444,4 +518,6 @@ class MainWindow(QMainWindow):
             self.publisher.close()
         if self.command_client is not None:
             self.command_client.close()
+        if self.tray_icon is not None:
+            self.tray_icon.hide()
         super().closeEvent(event)
