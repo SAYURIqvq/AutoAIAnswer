@@ -103,7 +103,7 @@ data = json.load(sys.stdin)
 path = sys.argv[1].split(".")
 for key in path:
     data = data[int(key)] if isinstance(data, list) else data[key]
-print(data)'
+print(data)' "$1"
 }
 
 asset_id_by_name() {
@@ -281,6 +281,20 @@ wait_for_asset() {
   fail "Timed out waiting for ${asset_name}. Check GitHub Actions for the Windows build."
 }
 
+tag_commit() {
+  local tag="$1"
+  git rev-list -n 1 "$tag" 2>/dev/null || true
+}
+
+remote_tag_commit() {
+  local tag="$1"
+  local ref
+  ref="$(git ls-remote --tags "$REMOTE" "refs/tags/${tag}" | awk 'NR == 1 {print $1}')"
+  if [[ -n "$ref" ]]; then
+    git rev-list -n 1 "$ref" 2>/dev/null || printf '%s\n' "$ref"
+  fi
+}
+
 main() {
   parse_args "$@"
 
@@ -300,11 +314,21 @@ main() {
   fi
   [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]] || fail "Tag must look like v0.2.7 or v0.2.7-test.1."
 
-  if git rev-parse "$TAG" >/dev/null 2>&1; then
-    fail "Tag already exists locally: ${TAG}"
+  local commit existing_local_tag existing_remote_tag should_push_tag
+  commit="$(git rev-parse HEAD)"
+  existing_local_tag="$(tag_commit "$TAG")"
+  existing_remote_tag="$(remote_tag_commit "$TAG")"
+  should_push_tag=1
+
+  if [[ -n "$existing_local_tag" ]]; then
+    [[ "$existing_local_tag" == "$commit" ]] || fail "Tag ${TAG} exists locally at ${existing_local_tag}, not current commit ${commit}."
+    log "Tag ${TAG} already exists locally at current commit; continuing."
+    should_push_tag=0
   fi
-  if git ls-remote --exit-code --tags "$REMOTE" "refs/tags/${TAG}" >/dev/null 2>&1; then
-    fail "Tag already exists on ${REMOTE}: ${TAG}"
+  if [[ -n "$existing_remote_tag" ]]; then
+    [[ "$existing_remote_tag" == "$commit" ]] || fail "Tag ${TAG} exists on ${REMOTE} at ${existing_remote_tag}, not current commit ${commit}."
+    log "Tag ${TAG} already exists on ${REMOTE} at current commit; continuing."
+    should_push_tag=0
   fi
 
   load_token
@@ -322,12 +346,13 @@ main() {
   bash packaging/macos/package.sh
   hdiutil verify "dist/${MAC_ASSET}"
 
-  local commit
-  commit="$(git rev-parse HEAD)"
-
-  log "Tagging ${commit} from ${RELEASE_BRANCH} as ${TAG}..."
-  git tag "$TAG"
-  git push "$REMOTE" "$TAG"
+  if [[ "$should_push_tag" == "1" ]]; then
+    log "Tagging ${commit} from ${RELEASE_BRANCH} as ${TAG}..."
+    git tag "$TAG"
+    git push "$REMOTE" "$TAG"
+  else
+    log "Skipping tag push for existing ${TAG}."
+  fi
 
   local release_json
   release_json="$(create_or_get_release "$TAG" "$commit")"
