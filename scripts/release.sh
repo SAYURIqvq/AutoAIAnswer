@@ -320,14 +320,15 @@ main() {
   existing_remote_tag="$(remote_tag_commit "$TAG")"
   should_push_tag=1
 
-  if [[ -n "$existing_local_tag" ]]; then
-    [[ "$existing_local_tag" == "$commit" ]] || fail "Tag ${TAG} exists locally at ${existing_local_tag}, not current commit ${commit}."
-    log "Tag ${TAG} already exists locally at current commit; continuing."
-    should_push_tag=0
-  fi
-  if [[ -n "$existing_remote_tag" ]]; then
-    [[ "$existing_remote_tag" == "$commit" ]] || fail "Tag ${TAG} exists on ${REMOTE} at ${existing_remote_tag}, not current commit ${commit}."
-    log "Tag ${TAG} already exists on ${REMOTE} at current commit; continuing."
+  if [[ -n "$existing_local_tag" || -n "$existing_remote_tag" ]]; then
+    if [[ -n "$existing_local_tag" && -n "$existing_remote_tag" && "$existing_local_tag" != "$existing_remote_tag" ]]; then
+      fail "Tag ${TAG} differs locally (${existing_local_tag}) and on ${REMOTE} (${existing_remote_tag})."
+    fi
+
+    commit="${existing_remote_tag:-$existing_local_tag}"
+    log "Tag ${TAG} already exists at ${commit}; checking out the tagged commit and resuming release upload."
+    git checkout --detach "$commit"
+    ensure_clean_tracked_tree
     should_push_tag=0
   fi
 
