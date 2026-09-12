@@ -7,7 +7,9 @@ if not exist .venv (
 call .venv\Scripts\activate
 python -m pip install -r requirements.txt
 pyinstaller --noconfirm --clean --onefile --windowed --name AutoAIAnswer ^
+  --icon assets\app.ico ^
   --add-data "ai_screenshot_assistant\web\static;ai_screenshot_assistant\web\static" ^
+  --add-data "assets;assets" ^
   --exclude-module IPython ^
   --exclude-module pytest ^
   --exclude-module matplotlib ^

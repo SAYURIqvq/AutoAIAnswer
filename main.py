@@ -10,10 +10,12 @@ if sys.stdout is None:
 if sys.stderr is None:
     sys.stderr = open(os.devnull, "w", encoding="utf-8")
 
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
 from ai_screenshot_assistant.backend.embedded import EmbeddedBackend
 from ai_screenshot_assistant.config import settings
+from ai_screenshot_assistant.resources import app_icon_path
 from ai_screenshot_assistant.ui.main_window import MainWindow
 
 
@@ -25,6 +27,11 @@ def main() -> int:
         backend_url = backend.start()
 
     app = QApplication(sys.argv)
+    icon_path = app_icon_path()
+    if icon_path is not None:
+        icon = QIcon(str(icon_path))
+        if not icon.isNull():
+            app.setWindowIcon(icon)
     app.setQuitOnLastWindowClosed(False)
     window = MainWindow(backend_url=backend_url)
     window.show()

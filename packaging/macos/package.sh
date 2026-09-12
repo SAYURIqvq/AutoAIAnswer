@@ -4,7 +4,9 @@ cd "$(dirname "$0")/../.."
 
 pyinstaller --noconfirm --clean --windowed --name AutoAIAnswer \
   --osx-bundle-identifier com.sayuriqvq.AutoAIAnswer \
+  --icon assets/app.icns \
   --add-data "ai_screenshot_assistant/web/static:ai_screenshot_assistant/web/static" \
+  --add-data "assets:assets" \
   --exclude-module IPython \
   --exclude-module pytest \
   --exclude-module matplotlib \
