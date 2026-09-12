@@ -6,7 +6,7 @@ import threading
 from typing import Any
 
 from PySide6.QtCore import QObject, QSettings, QTimer, Signal
-from PySide6.QtGui import QAction, QCloseEvent, QPixmap
+from PySide6.QtGui import QAction, QCloseEvent, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -32,9 +32,9 @@ from ai_screenshot_assistant.config import settings
 from ai_screenshot_assistant.core.workflow import AssistantWorkflow
 from ai_screenshot_assistant.desktop_command_client import DesktopCommandClient
 from ai_screenshot_assistant.input.mouse_listener import MouseRoiListener
+from ai_screenshot_assistant.resources import app_icon_path
 from ai_screenshot_assistant.ui.streaming_overlay import StreamingOverlay
 from ai_screenshot_assistant.websocket_client import DesktopWebSocketPublisher
-
 
 class UiSignals(QObject):
     status = Signal(str)
@@ -53,6 +53,9 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.backend_url = backend_url or settings.backend_url
         self.setWindowTitle("QQ音乐")
+        icon = self._app_icon()
+        if not icon.isNull():
+            self.setWindowIcon(icon)
         self.setMinimumSize(560, 660)
         self.app_settings = QSettings("AI Screenshot Assistant", "Desktop")
 
@@ -156,10 +159,10 @@ class MainWindow(QMainWindow):
         if not QSystemTrayIcon.isSystemTrayAvailable():
             self._log("System tray unavailable; close will exit directly")
             return
-        icon = self.windowIcon()
+        icon = self._app_icon()
         if icon.isNull():
             icon = self.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon)
-            self.setWindowIcon(icon)
+        self.setWindowIcon(icon)
         show_action = QAction("显示主窗口", self)
         show_action.triggered.connect(self.show_main_window)
         capture_action = QAction("截取当前屏幕", self)
@@ -172,6 +175,7 @@ class MainWindow(QMainWindow):
         menu.addSeparator()
         menu.addAction(quit_action)
         self.tray_icon = QSystemTrayIcon(icon, self)
+        self.tray_icon.setIcon(icon)
         self.tray_icon.setToolTip("AI 截图搜题助手")
         self.tray_icon.setContextMenu(menu)
         self.tray_icon.activated.connect(self._on_tray_activated)
@@ -193,6 +197,17 @@ class MainWindow(QMainWindow):
         self._force_quit = True
         self.close()
         QApplication.quit()
+
+    def _app_icon(self) -> QIcon:
+        icon_path = app_icon_path()
+        if icon_path is not None:
+            icon = QIcon(str(icon_path))
+            if not icon.isNull():
+                return icon
+        icon = QApplication.windowIcon()
+        if not icon.isNull():
+            return icon
+        return QIcon()
 
     def _settings_bool(self, key: str, default: bool) -> bool:
         value = self.app_settings.value(key, default)
