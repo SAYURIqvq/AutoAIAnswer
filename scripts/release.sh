@@ -4,7 +4,7 @@ set -euo pipefail
 REPO_OWNER="${REPO_OWNER:-SAYURIqvq}"
 REPO_NAME="${REPO_NAME:-AutoAIAnswer}"
 REMOTE="${REMOTE:-origin}"
-MAIN_BRANCH="${MAIN_BRANCH:-main}"
+RELEASE_BRANCH="${RELEASE_BRANCH:-main}"
 WINDOWS_ASSET="${WINDOWS_ASSET:-AutoAIAnswer-Windows.zip}"
 MAC_ASSET="${MAC_ASSET:-AutoAIAnswer-macOS.dmg}"
 WAIT_SECONDS="${WAIT_SECONDS:-2400}"
@@ -24,6 +24,63 @@ fail() {
 
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || fail "Missing required command: $1"
+}
+
+usage() {
+  cat <<EOF
+Usage:
+  scripts/release.sh [tag]
+  scripts/release.sh --branch <branch> [--tag <tag>]
+
+Examples:
+  scripts/release.sh
+  scripts/release.sh v0.2.7
+  scripts/release.sh --branch main
+  scripts/release.sh --branch release/test --tag v0.2.7-test.1
+
+Options:
+  -b, --branch <branch>  Branch to package from. Defaults to RELEASE_BRANCH or main.
+  -t, --tag <tag>        Release tag. Defaults to next vX.Y.Z patch tag.
+  -h, --help             Show this help.
+EOF
+}
+
+parse_args() {
+  TAG=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -b|--branch)
+        [[ $# -ge 2 ]] || fail "$1 requires a branch name."
+        RELEASE_BRANCH="$2"
+        shift 2
+        ;;
+      -t|--tag)
+        [[ $# -ge 2 ]] || fail "$1 requires a tag."
+        TAG="$2"
+        shift 2
+        ;;
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      --)
+        shift
+        break
+        ;;
+      -*)
+        fail "Unknown option: $1"
+        ;;
+      *)
+        [[ -z "$TAG" ]] || fail "Unexpected extra argument: $1"
+        TAG="$1"
+        shift
+        ;;
+    esac
+  done
+
+  [[ $# -eq 0 ]] || fail "Unexpected extra argument: $1"
+  [[ -n "$RELEASE_BRANCH" ]] || fail "Branch cannot be empty."
 }
 
 api() {
@@ -109,6 +166,7 @@ release_body() {
   cat <<EOF
 Automated release for ${tag}.
 
+Source branch: ${RELEASE_BRANCH}
 Source commit: ${commit}
 
 Artifacts:
@@ -139,20 +197,20 @@ ensure_clean_tracked_tree() {
   git diff --cached --quiet || fail "Tracked files have staged changes. Commit or unstage them before releasing."
 }
 
-ensure_on_latest_main() {
-  log "Fetching ${REMOTE}/${MAIN_BRANCH} and tags..."
-  git fetch "$REMOTE" "$MAIN_BRANCH" --tags
+ensure_on_latest_branch() {
+  log "Fetching ${REMOTE}/${RELEASE_BRANCH} and tags..."
+  git fetch "$REMOTE" "$RELEASE_BRANCH" --tags
 
-  log "Checking out ${MAIN_BRANCH}..."
-  git checkout "$MAIN_BRANCH"
+  log "Checking out ${RELEASE_BRANCH}..."
+  git checkout "$RELEASE_BRANCH"
 
-  log "Pulling latest ${REMOTE}/${MAIN_BRANCH}..."
-  git pull --ff-only "$REMOTE" "$MAIN_BRANCH"
+  log "Pulling latest ${REMOTE}/${RELEASE_BRANCH}..."
+  git pull --ff-only "$REMOTE" "$RELEASE_BRANCH"
 
   local local_head remote_head
-  local_head="$(git rev-parse "$MAIN_BRANCH")"
-  remote_head="$(git rev-parse "${REMOTE}/${MAIN_BRANCH}")"
-  [[ "$local_head" == "$remote_head" ]] || fail "${MAIN_BRANCH} is not at ${REMOTE}/${MAIN_BRANCH}."
+  local_head="$(git rev-parse "$RELEASE_BRANCH")"
+  remote_head="$(git rev-parse "${REMOTE}/${RELEASE_BRANCH}")"
+  [[ "$local_head" == "$remote_head" ]] || fail "${RELEASE_BRANCH} is not at ${REMOTE}/${RELEASE_BRANCH}."
 }
 
 create_or_get_release() {
@@ -224,6 +282,8 @@ wait_for_asset() {
 }
 
 main() {
+  parse_args "$@"
+
   require_cmd git
   require_cmd curl
   require_cmd python3
@@ -231,21 +291,20 @@ main() {
   [[ "$(uname -s)" == "Darwin" ]] || fail "Run this script on macOS. The macOS DMG is built locally; Windows is built by GitHub Actions."
   command -v hdiutil >/dev/null 2>&1 || fail "hdiutil is required for macOS DMG creation."
 
-  local tag="${1:-}"
   ensure_clean_tracked_tree
-  ensure_on_latest_main
+  ensure_on_latest_branch
   ensure_clean_tracked_tree
 
-  if [[ -z "$tag" ]]; then
-    tag="$(next_patch_tag)"
+  if [[ -z "$TAG" ]]; then
+    TAG="$(next_patch_tag)"
   fi
-  [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "Tag must look like v0.2.7."
+  [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]] || fail "Tag must look like v0.2.7 or v0.2.7-test.1."
 
-  if git rev-parse "$tag" >/dev/null 2>&1; then
-    fail "Tag already exists locally: ${tag}"
+  if git rev-parse "$TAG" >/dev/null 2>&1; then
+    fail "Tag already exists locally: ${TAG}"
   fi
-  if git ls-remote --exit-code --tags "$REMOTE" "refs/tags/${tag}" >/dev/null 2>&1; then
-    fail "Tag already exists on ${REMOTE}: ${tag}"
+  if git ls-remote --exit-code --tags "$REMOTE" "refs/tags/${TAG}" >/dev/null 2>&1; then
+    fail "Tag already exists on ${REMOTE}: ${TAG}"
   fi
 
   load_token
@@ -266,20 +325,20 @@ main() {
   local commit
   commit="$(git rev-parse HEAD)"
 
-  log "Tagging ${commit} as ${tag}..."
-  git tag "$tag"
-  git push "$REMOTE" "$tag"
+  log "Tagging ${commit} from ${RELEASE_BRANCH} as ${TAG}..."
+  git tag "$TAG"
+  git push "$REMOTE" "$TAG"
 
   local release_json
-  release_json="$(create_or_get_release "$tag" "$commit")"
+  release_json="$(create_or_get_release "$TAG" "$commit")"
   upload_asset_clobber "$release_json" "dist/${MAC_ASSET}" "$MAC_ASSET"
 
   local final_release_json mac_url win_url
-  final_release_json="$(api GET "https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/tags/${tag}")"
+  final_release_json="$(api GET "https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/tags/${TAG}")"
   mac_url="$(asset_url_by_name "$final_release_json" "$MAC_ASSET")"
-  win_url="$(wait_for_asset "$tag" "$WINDOWS_ASSET")"
+  win_url="$(wait_for_asset "$TAG" "$WINDOWS_ASSET")"
 
-  log "Release complete: https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/tag/${tag}"
+  log "Release complete: https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/tag/${TAG}"
   log "macOS: ${mac_url}"
   log "Windows: ${win_url}"
 }
