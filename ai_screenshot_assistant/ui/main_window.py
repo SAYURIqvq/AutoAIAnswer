@@ -35,6 +35,7 @@ from ai_screenshot_assistant.input.mouse_listener import MouseRoiListener
 from ai_screenshot_assistant.ui.streaming_overlay import StreamingOverlay
 from ai_screenshot_assistant.websocket_client import DesktopWebSocketPublisher
 
+gAppName = str("QQ音乐")
 
 class UiSignals(QObject):
     status = Signal(str)
@@ -52,7 +53,7 @@ class MainWindow(QMainWindow):
     def __init__(self, backend_url: str | None = None) -> None:
         super().__init__()
         self.backend_url = backend_url or settings.backend_url
-        self.setWindowTitle("QQ音乐")
+        self.setWindowTitle(gAppName)
         self.setMinimumSize(560, 660)
         self.app_settings = QSettings("AI Screenshot Assistant", "Desktop")
 
@@ -172,7 +173,7 @@ class MainWindow(QMainWindow):
         menu.addSeparator()
         menu.addAction(quit_action)
         self.tray_icon = QSystemTrayIcon(icon, self)
-        self.tray_icon.setToolTip("AI 截图搜题助手")
+        self.tray_icon.setToolTip(gAppName)
         self.tray_icon.setContextMenu(menu)
         self.tray_icon.activated.connect(self._on_tray_activated)
         self.tray_icon.show()
