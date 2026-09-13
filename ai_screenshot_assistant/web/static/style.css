@@ -299,9 +299,9 @@ h1 { margin: 0; font-size: 20px; }
 }
 
 .output {
-  height: 66vh;
-  min-height: 360px;
-  max-height: 66vh;
+  height: 40vh;
+  min-height: 216px;
+  max-height: 40vh;
   margin: 0;
   padding: 14px;
   border: 1px solid var(--line);
@@ -318,10 +318,15 @@ h1 { margin: 0; font-size: 20px; }
 }
 
 @media (max-height: 720px) {
-  .chat-list,
-  .output {
+  .chat-list {
     height: 62vh;
     min-height: 300px;
     max-height: 62vh;
+  }
+
+  .output {
+    height: 37vh;
+    min-height: 180px;
+    max-height: 37vh;
   }
 }
