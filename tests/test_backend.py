@@ -96,3 +96,40 @@ def test_mobile_fullscreen_command_forwards_chat_payload() -> None:
         "conversation": True,
         "chat": True,
     }
+
+
+def test_mobile_capture_fullscreen_command_reaches_desktop_command_socket() -> None:
+    client = TestClient(app)
+    session = client.post("/sessions").json()
+    session_id = session["session_id"]
+
+    with client.websocket_connect(f"/ws/desktop-commands/{session_id}") as desktop_commands:
+        with client.websocket_connect(f"/ws/mobile/{session_id}") as mobile:
+            mobile.receive_json()
+            mobile.send_text('{"type":"command.capture_fullscreen"}')
+            command = desktop_commands.receive_json()
+
+    assert command["type"] == "command.capture_fullscreen"
+    assert command["payload"] == {"source": "mobile"}
+
+
+def test_mobile_submit_screenshots_forwards_images_without_text() -> None:
+    client = TestClient(app)
+    session = client.post("/sessions").json()
+    session_id = session["session_id"]
+
+    with client.websocket_connect(f"/ws/desktop-commands/{session_id}") as desktop_commands:
+        with client.websocket_connect(f"/ws/mobile/{session_id}") as mobile:
+            mobile.receive_json()
+            mobile.send_text(
+                '{"type":"command.submit_screenshots","payload":{"images":["img1","img2"],"conversation":true,"chat":true}}'
+            )
+            command = desktop_commands.receive_json()
+
+    assert command["type"] == "command.submit_screenshots"
+    assert command["payload"] == {
+        "source": "mobile",
+        "conversation": True,
+        "chat": True,
+        "images": ["img1", "img2"],
+    }

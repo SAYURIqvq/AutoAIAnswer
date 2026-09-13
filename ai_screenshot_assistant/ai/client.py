@@ -130,13 +130,22 @@ class VisionClient:
         user_text: str | None = None,
         conversation: list[dict[str, str]] | None = None,
     ) -> Iterator[str]:
+        yield from self.analyze_images_stream([png_bytes], user_text=user_text, conversation=conversation)
+
+    def analyze_images_stream(
+        self,
+        png_images: list[bytes],
+        user_text: str | None = None,
+        conversation: list[dict[str, str]] | None = None,
+    ) -> Iterator[str]:
         if not self.provider.api_key:
             raise RuntimeError(f"{self.provider.name} API Key 不能为空")
-        image_b64 = base64.b64encode(png_bytes).decode("ascii")
-        content = [
-            {"type": "text", "text": _build_user_prompt(user_text, conversation)},
-            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_b64}"}},
-        ]
+        if not png_images:
+            raise RuntimeError("至少需要 1 张截图")
+        content: list[dict[str, Any]] = [{"type": "text", "text": _build_user_prompt(user_text, conversation)}]
+        for png_bytes in png_images:
+            image_b64 = base64.b64encode(png_bytes).decode("ascii")
+            content.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_b64}"}})
         payload = {
             "model": self.provider.model,
             "stream": True,
@@ -237,6 +246,20 @@ class FailoverVisionClient:
     def _has_key(client: VisionClient) -> bool:
         return bool(client.provider.api_key and client.provider.api_key.strip())
 
+    @staticmethod
+    def _stream_from_client(
+        client: Any,
+        png_images: list[bytes],
+        user_text: str | None,
+        conversation: list[dict[str, str]] | None,
+    ) -> Iterator[str]:
+        if hasattr(client, "analyze_images_stream"):
+            yield from client.analyze_images_stream(png_images, user_text=user_text, conversation=conversation)
+            return
+        if len(png_images) != 1:
+            raise RuntimeError("当前 AI 客户端不支持多张截图")
+        yield from client.analyze_image_stream(png_images[0], user_text=user_text, conversation=conversation)
+
     def _initial_provider(self) -> str:
         if self._deepseek_has_key:
             return "deepseek"
@@ -250,13 +273,21 @@ class FailoverVisionClient:
         user_text: str | None = None,
         conversation: list[dict[str, str]] | None = None,
     ) -> Iterator[str]:
+        yield from self.analyze_images_stream([png_bytes], user_text=user_text, conversation=conversation)
+
+    def analyze_images_stream(
+        self,
+        png_images: list[bytes],
+        user_text: str | None = None,
+        conversation: list[dict[str, str]] | None = None,
+    ) -> Iterator[str]:
         if not self._deepseek_has_key and not self._openrouter_has_key:
             raise RuntimeError("请至少填写 DeepSeek 或 OpenRouter 其中一把 API Key")
         if self.current_provider == "openrouter" or not self._deepseek_has_key:
-            yield from self.openrouter.analyze_image_stream(png_bytes, user_text=user_text, conversation=conversation)
+            yield from self._stream_from_client(self.openrouter, png_images, user_text, conversation)
             return
         try:
-            yield from self.deepseek.analyze_image_stream(png_bytes, user_text=user_text, conversation=conversation)
+            yield from self._stream_from_client(self.deepseek, png_images, user_text, conversation)
         except requests.HTTPError as exc:
             status_code = exc.response.status_code if exc.response is not None else None
             if status_code != 402:
@@ -265,7 +296,7 @@ class FailoverVisionClient:
                 raise RuntimeError("DeepSeek 额度不足（HTTP 402），且未配置 OpenRouter Key") from exc
             self.current_provider = "openrouter"
             self.on_provider_changed("openrouter")
-            yield from self.openrouter.analyze_image_stream(png_bytes, user_text=user_text, conversation=conversation)
+            yield from self._stream_from_client(self.openrouter, png_images, user_text, conversation)
 
 
 # Backward-compatible name for older imports and static delta parser tests.

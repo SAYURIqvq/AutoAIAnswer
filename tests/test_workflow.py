@@ -33,6 +33,23 @@ class FakeAI:
         yield '"reason":"TCP reliable",'
         yield '"confidence":"0.95"}'
 
+    def analyze_images_stream(self, png_images, user_text=None, conversation=None):
+        self.calls.append(
+            {
+                "png_images": png_images,
+                "user_text": user_text,
+                "conversation": conversation,
+            }
+        )
+        if len(png_images) == 1:
+            yield '{"answer":"B",'
+            yield '"reason":"TCP reliable",'
+            yield '"confidence":"0.95"}'
+        else:
+            yield '{"answer":"A",'
+            yield '"reason":"multi image",'
+            yield '"confidence":"0.91"}'
+
 
 class FakePublisher:
     def __init__(self):
@@ -144,7 +161,7 @@ def test_workflow_fullscreen_question_uses_conversation_context() -> None:
 
     workflow.process_fullscreen(10, 20, user_text="第 2 题为什么选 B？", use_conversation=True, is_chat=True)
 
-    assert ai_client.calls[0]["png_bytes"] == b"fullpng"
+    assert ai_client.calls[0]["png_images"] == [b"fullpng"]
     assert ai_client.calls[0]["user_text"] == "第 2 题为什么选 B？"
     assert ai_client.calls[0]["conversation"] == [
         {"role": "user", "content": "先看第 1 题"},
@@ -161,5 +178,52 @@ def test_workflow_fullscreen_question_uses_conversation_context() -> None:
         "mode": "fullscreen",
         "has_user_text": True,
         "conversation_turns": 2,
+        "chat": True,
+    }
+
+
+def test_mobile_fullscreen_preview_publishes_screenshot() -> None:
+    publisher = FakePublisher()
+    workflow = AssistantWorkflow(
+        session_id="s1",
+        capture=FakeCapture(),
+        ai_client=FakeAI(),
+        publisher=publisher,
+        app_settings=replace(settings, save_debug_image=False),
+    )
+
+    workflow.capture_fullscreen_for_mobile(10, 20)
+
+    assert publisher.events[0]["type"] == "screenshot.captured"
+    assert publisher.events[0]["payload"]["image"].startswith("data:image/png;base64,")
+    assert publisher.events[0]["payload"]["size"] == len(b"fullpng")
+
+
+def test_mobile_multi_screenshot_submission_uses_all_images() -> None:
+    publisher = FakePublisher()
+    ai_client = FakeAI()
+    workflow = AssistantWorkflow(
+        session_id="s1",
+        capture=FakeCapture(),
+        ai_client=ai_client,
+        publisher=publisher,
+        app_settings=replace(settings, save_debug_image=False),
+    )
+
+    workflow.process_mobile_images(
+        [b"one", b"two"],
+        user_text="补充条件",
+        use_conversation=True,
+        is_chat=True,
+    )
+
+    assert ai_client.calls[0]["png_images"] == [b"one", b"two"]
+    assert ai_client.calls[0]["user_text"] == "补充条件"
+    assert publisher.events[1]["type"] == "answer.started"
+    assert publisher.events[1]["payload"] == {
+        "mode": "mobile_screenshots",
+        "image_count": 2,
+        "has_user_text": True,
+        "conversation_turns": 0,
         "chat": True,
     }

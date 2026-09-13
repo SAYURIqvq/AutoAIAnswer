@@ -9,6 +9,8 @@
   const questionInput = document.getElementById("question-input");
   const askButton = document.getElementById("ask-button");
   const chatList = document.getElementById("chat-list");
+  const previewList = document.getElementById("preview-list");
+  const previewCount = document.getElementById("preview-count");
   const outputEl = document.getElementById("output");
   const cursorKey = `lastEventId:${sessionId || "missing"}`;
   let lastEventId = Number(localStorage.getItem(cursorKey) || 0);
@@ -17,6 +19,8 @@
   let socket = null;
   let activeChatRequestId = null;
   let activeAssistantBubble = null;
+  let screenshots = [];
+  const maxScreenshots = 5;
 
   function setConnectionStatus(value, online) {
     statusEl.textContent = value;
@@ -27,7 +31,7 @@
 
   function updateAskButton() {
     const online = socket && socket.readyState === WebSocket.OPEN;
-    askButton.disabled = !online || !questionInput.value.trim();
+    askButton.disabled = !online || screenshots.length === 0;
   }
 
   function setSelectionStatus(state, message) {
@@ -42,16 +46,41 @@
     }
   }
 
-  function appendMessage(role, text, withAttachment) {
+  function renderPreviewList() {
+    previewCount.textContent = `已截图：${screenshots.length}张`;
+    previewList.textContent = "";
+    screenshots.forEach(function (screenshot, index) {
+      const item = document.createElement("div");
+      item.className = "preview-item";
+      const image = document.createElement("img");
+      image.src = screenshot.image;
+      image.alt = `截图 ${index + 1}`;
+      const remove = document.createElement("button");
+      remove.className = "preview-remove";
+      remove.type = "button";
+      remove.setAttribute("aria-label", `删除截图 ${index + 1}`);
+      remove.textContent = "×";
+      remove.addEventListener("click", function () {
+        screenshots.splice(index, 1);
+        renderPreviewList();
+        updateAskButton();
+      });
+      item.appendChild(image);
+      item.appendChild(remove);
+      previewList.appendChild(item);
+    });
+  }
+
+  function appendMessage(role, text, imageCount) {
     clearEmptyChat();
     const item = document.createElement("div");
     item.className = `chat-message ${role}`;
     const bubble = document.createElement("div");
     bubble.className = "chat-bubble";
-    if (withAttachment) {
+    if (imageCount) {
       const attachment = document.createElement("div");
       attachment.className = "attachment-chip";
-      attachment.textContent = "已附带电脑全屏截图";
+      attachment.textContent = `已附带 ${imageCount} 张截图`;
       bubble.appendChild(attachment);
     }
     const content = document.createElement("div");
@@ -66,7 +95,7 @@
 
   function startAssistantMessage(requestId) {
     activeChatRequestId = requestId;
-    activeAssistantBubble = appendMessage("assistant", "分析中…", false);
+    activeAssistantBubble = appendMessage("assistant", "分析中…", 0);
   }
 
   function appendAssistantDelta(requestId, delta) {
@@ -126,6 +155,16 @@
         outputEl.textContent = buffer;
       }
       setSelectionStatus("completed", "答案已生成，可以继续框选或全屏截题");
+    } else if (event.type === "screenshot.captured") {
+      if (payload.image) {
+        screenshots.push({ image: payload.image, size: payload.size || 0 });
+        if (screenshots.length > maxScreenshots) {
+          screenshots = screenshots.slice(screenshots.length - maxScreenshots);
+        }
+        renderPreviewList();
+        updateAskButton();
+        setSelectionStatus("completed", `已添加截图 ${screenshots.length}/${maxScreenshots}，可继续截图或发送`);
+      }
     } else if (event.type === "answer.error") {
       buffer = "";
       failAssistantMessage(payload.message);
@@ -166,8 +205,8 @@
       return;
     }
     fullscreenButton.disabled = true;
-    setSelectionStatus("capturing", "已请求电脑截取全屏");
-    socket.send(JSON.stringify({ type: "command.fullscreen" }));
+    setSelectionStatus("capturing", "已请求电脑截全屏并添加到缓冲区");
+    socket.send(JSON.stringify({ type: "command.capture_fullscreen" }));
     setTimeout(function () {
       if (socket && socket.readyState === WebSocket.OPEN) {
         fullscreenButton.disabled = false;
@@ -182,23 +221,27 @@
       return;
     }
     const text = questionInput.value.trim();
-    if (!text) {
+    if (screenshots.length === 0) {
       updateAskButton();
       return;
     }
-    appendMessage("user", text, true);
+    const images = screenshots.map(function (screenshot) { return screenshot.image; });
+    appendMessage("user", text || "请根据截图作答", images.length);
     fullscreenButton.disabled = true;
     askButton.disabled = true;
-    setSelectionStatus("capturing", "已请求电脑截全屏并发送追问");
+    setSelectionStatus("analyzing", `正在发送 ${images.length} 张截图给 AI`);
     socket.send(JSON.stringify({
-      type: "command.fullscreen",
+      type: "command.submit_screenshots",
       payload: {
         text,
+        images,
         conversation: true,
         chat: true
       }
     }));
     questionInput.value = "";
+    screenshots = [];
+    renderPreviewList();
     setTimeout(function () {
       if (socket && socket.readyState === WebSocket.OPEN) {
         fullscreenButton.disabled = false;
@@ -207,5 +250,6 @@
     }, 1500);
   });
 
+  renderPreviewList();
   connect();
 })();

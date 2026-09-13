@@ -123,12 +123,13 @@ async def _handle_mobile_message(session: Any, message: str) -> None:
         data = json.loads(message)
     except json.JSONDecodeError:
         return
-    if data.get("type") != "command.fullscreen":
+    command_type = data.get("type")
+    if command_type not in {"command.fullscreen", "command.capture_fullscreen", "command.submit_screenshots"}:
         return
     if session.desktop_commands is not None:
         payload = _mobile_command_payload(data)
         await session.desktop_commands.send_json(
-            _system_event(session.session_id, "command.fullscreen", payload)
+            _system_event(session.session_id, command_type, payload)
         )
 
 
@@ -143,6 +144,9 @@ def _mobile_command_payload(data: dict[str, Any]) -> dict[str, Any]:
         payload["conversation"] = True
     if bool(source_payload.get("chat") or data.get("chat")):
         payload["chat"] = True
+    raw_images = source_payload.get("images") or data.get("images")
+    if isinstance(raw_images, list):
+        payload["images"] = [str(image) for image in raw_images[:5] if isinstance(image, str)]
     return payload
 
 

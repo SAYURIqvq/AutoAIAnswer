@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import io
 import sys
 import threading
@@ -409,10 +410,52 @@ class MainWindow(QMainWindow):
             is_chat=is_chat,
         )
 
+    def _capture_current_screen_preview_for_mobile(self) -> None:
+        if self.workflow is None or self.mouse_listener is None:
+            return
+        center = self.frameGeometry().center()
+        self.mouse_listener.set_enabled(False)
+        threading.Thread(
+            target=self._run_fullscreen_preview,
+            args=(center.x(), center.y()),
+            daemon=True,
+        ).start()
+
+    def _submit_mobile_screenshots(self, payload: dict[str, Any]) -> None:
+        if self.workflow is None or self.mouse_listener is None:
+            return
+        raw_images = payload.get("images")
+        if not isinstance(raw_images, list):
+            raw_images = []
+        png_images: list[bytes] = []
+        for raw_image in raw_images[:5]:
+            if not isinstance(raw_image, str):
+                continue
+            image_data = raw_image.split(",", 1)[1] if "," in raw_image else raw_image
+            try:
+                png_images.append(base64.b64decode(image_data, validate=True))
+            except Exception:
+                self._log("手机端提交的截图解码失败，已跳过")
+        user_text = str(payload.get("text") or "").strip()
+        use_conversation = bool(payload.get("conversation"))
+        is_chat = bool(payload.get("chat"))
+        self._log(f"手机端提交 {len(png_images)} 张截图" + ("并追问" if user_text else ""))
+        self.mouse_listener.set_enabled(False)
+        threading.Thread(
+            target=self._run_mobile_screenshots,
+            args=(png_images, user_text or None, use_conversation, is_chat),
+            daemon=True,
+        ).start()
+
     def _handle_desktop_command(self, command: dict[str, Any]) -> None:
         if command.get("type") == "command.fullscreen":
             payload = command.get("payload")
             self.signals.mobile_fullscreen_requested.emit(payload if isinstance(payload, dict) else {})
+        elif command.get("type") == "command.capture_fullscreen":
+            self._capture_current_screen_preview_for_mobile()
+        elif command.get("type") == "command.submit_screenshots":
+            payload = command.get("payload")
+            self._submit_mobile_screenshots(payload if isinstance(payload, dict) else {})
 
     def _gesture_hint_text(self) -> str:
         if sys.platform == "darwin":
@@ -471,6 +514,33 @@ class MainWindow(QMainWindow):
                 self.workflow.process_fullscreen(
                     x,
                     y,
+                    user_text=user_text,
+                    use_conversation=use_conversation,
+                    is_chat=is_chat,
+                )
+        finally:
+            if self.mouse_listener is not None:
+                self.mouse_listener.set_enabled(True)
+
+    def _run_fullscreen_preview(self, x: int, y: int) -> None:
+        try:
+            if self.workflow is not None:
+                self.workflow.capture_fullscreen_for_mobile(x, y)
+        finally:
+            if self.mouse_listener is not None:
+                self.mouse_listener.set_enabled(True)
+
+    def _run_mobile_screenshots(
+        self,
+        png_images: list[bytes],
+        user_text: str | None = None,
+        use_conversation: bool = False,
+        is_chat: bool = False,
+    ) -> None:
+        try:
+            if self.workflow is not None:
+                self.workflow.process_mobile_images(
+                    png_images,
                     user_text=user_text,
                     use_conversation=use_conversation,
                     is_chat=is_chat,

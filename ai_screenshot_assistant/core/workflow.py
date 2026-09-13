@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import time
 from pathlib import Path
 from typing import Any, Protocol
@@ -26,6 +27,13 @@ class AIPort(Protocol):
     def analyze_image_stream(
         self,
         png_bytes: bytes,
+        user_text: str | None = None,
+        conversation: list[dict[str, str]] | None = None,
+    ): ...
+
+    def analyze_images_stream(
+        self,
+        png_images: list[bytes],
         user_text: str | None = None,
         conversation: list[dict[str, str]] | None = None,
     ): ...
@@ -127,6 +135,52 @@ class AssistantWorkflow:
         except Exception as exc:
             self._fail(str(exc), request_id=request_id)
 
+    def capture_fullscreen_for_mobile(self, x: int | None = None, y: int | None = None) -> None:
+        request_id = uuid4().hex
+        try:
+            png = self.capture.capture_fullscreen_png(x, y, debug_path=self._debug_path())
+            image_b64 = base64.b64encode(png).decode("ascii")
+            self._publish(
+                "screenshot.captured",
+                request_id,
+                {
+                    "image": f"data:image/png;base64,{image_b64}",
+                    "size": len(png),
+                },
+            )
+            self._publish_selection_status("completed", "截图已添加到手机端缓冲区，可继续截图或发送")
+        except Exception as exc:
+            self._fail(str(exc), request_id=request_id)
+
+    def process_mobile_images(
+        self,
+        png_images: list[bytes],
+        user_text: str | None = None,
+        use_conversation: bool = False,
+        is_chat: bool = False,
+    ) -> None:
+        if not png_images:
+            self._fail("至少需要 1 张截图")
+            return
+        started_payload: dict[str, Any] = {
+            "mode": "mobile_screenshots",
+            "image_count": len(png_images),
+        }
+        if user_text:
+            started_payload["has_user_text"] = True
+        if use_conversation:
+            started_payload["conversation_turns"] = len(self.mobile_conversation)
+        if is_chat:
+            started_payload["chat"] = True
+        self._analyze_pngs(
+            png_images,
+            uuid4().hex,
+            time.perf_counter(),
+            started_payload,
+            user_text=user_text,
+            use_conversation=use_conversation,
+        )
+
     def _debug_path(self) -> Path | None:
         return Path("debug/image.png") if self.settings.save_debug_image else None
 
@@ -139,12 +193,34 @@ class AssistantWorkflow:
         user_text: str | None = None,
         use_conversation: bool = False,
     ) -> None:
+        self._analyze_pngs(
+            [png],
+            request_id,
+            started_at,
+            started_payload,
+            user_text=user_text,
+            use_conversation=use_conversation,
+        )
+
+    def _analyze_pngs(
+        self,
+        png_images: list[bytes],
+        request_id: str,
+        started_at: float,
+        started_payload: dict[str, Any],
+        user_text: str | None = None,
+        use_conversation: bool = False,
+    ) -> None:
         self._publish_selection_status("analyzing", "截图成功，AI 正在分析全部题目")
         self.on_stream_started()
         self._publish("answer.started", request_id, started_payload)
         chunks: list[str] = []
         conversation = list(self.mobile_conversation) if use_conversation else None
-        for delta in self.ai_client.analyze_image_stream(png, user_text=user_text, conversation=conversation):
+        if hasattr(self.ai_client, "analyze_images_stream"):
+            stream = self.ai_client.analyze_images_stream(png_images, user_text=user_text, conversation=conversation)
+        else:
+            stream = self.ai_client.analyze_image_stream(png_images[0], user_text=user_text, conversation=conversation)
+        for delta in stream:
             chunks.append(delta)
             self.on_stream_delta(delta)
             self._publish("answer.delta", request_id, {"delta": delta})
