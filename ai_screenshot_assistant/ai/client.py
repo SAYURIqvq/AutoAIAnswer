@@ -140,8 +140,6 @@ class VisionClient:
     ) -> Iterator[str]:
         if not self.provider.api_key:
             raise RuntimeError(f"{self.provider.name} API Key 不能为空")
-        if not png_images:
-            raise RuntimeError("至少需要 1 张截图")
         content: list[dict[str, Any]] = [{"type": "text", "text": _build_user_prompt(user_text, conversation)}]
         for png_bytes in png_images:
             image_b64 = base64.b64encode(png_bytes).decode("ascii")

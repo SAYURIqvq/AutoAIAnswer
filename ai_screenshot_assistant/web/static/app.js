@@ -6,6 +6,7 @@
   const selectionEl = document.getElementById("selection-status");
   const selectionMessageEl = document.getElementById("selection-message");
   const fullscreenButton = document.getElementById("fullscreen-button");
+  const chatCaptureButton = document.getElementById("chat-capture-button");
   const questionInput = document.getElementById("question-input");
   const askButton = document.getElementById("ask-button");
   const chatList = document.getElementById("chat-list");
@@ -26,12 +27,13 @@
     statusEl.textContent = value;
     statusEl.classList.toggle("online", Boolean(online));
     fullscreenButton.disabled = !online;
+    chatCaptureButton.disabled = !online;
     updateAskButton();
   }
 
   function updateAskButton() {
     const online = socket && socket.readyState === WebSocket.OPEN;
-    askButton.disabled = !online || screenshots.length === 0;
+    askButton.disabled = !online || (screenshots.length === 0 && !questionInput.value.trim());
   }
 
   function setSelectionStatus(state, message) {
@@ -205,11 +207,25 @@
       return;
     }
     fullscreenButton.disabled = true;
-    setSelectionStatus("capturing", "已请求电脑截全屏并添加到缓冲区");
-    socket.send(JSON.stringify({ type: "command.capture_fullscreen" }));
+    setSelectionStatus("capturing", "已请求电脑截取全屏");
+    socket.send(JSON.stringify({ type: "command.fullscreen" }));
     setTimeout(function () {
       if (socket && socket.readyState === WebSocket.OPEN) {
         fullscreenButton.disabled = false;
+      }
+    }, 1500);
+  });
+
+  chatCaptureButton.addEventListener("click", function () {
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      return;
+    }
+    chatCaptureButton.disabled = true;
+    setSelectionStatus("capturing", "已请求电脑截全屏并添加到对话缓冲区");
+    socket.send(JSON.stringify({ type: "command.capture_fullscreen" }));
+    setTimeout(function () {
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        chatCaptureButton.disabled = false;
       }
     }, 1500);
   });
@@ -221,15 +237,16 @@
       return;
     }
     const text = questionInput.value.trim();
-    if (screenshots.length === 0) {
+    if (screenshots.length === 0 && !text) {
       updateAskButton();
       return;
     }
     const images = screenshots.map(function (screenshot) { return screenshot.image; });
     appendMessage("user", text || "请根据截图作答", images.length);
     fullscreenButton.disabled = true;
+    chatCaptureButton.disabled = true;
     askButton.disabled = true;
-    setSelectionStatus("analyzing", `正在发送 ${images.length} 张截图给 AI`);
+    setSelectionStatus("analyzing", images.length ? `正在发送 ${images.length} 张截图给 AI` : "正在发送追问给 AI");
     socket.send(JSON.stringify({
       type: "command.submit_screenshots",
       payload: {
@@ -245,6 +262,7 @@
     setTimeout(function () {
       if (socket && socket.readyState === WebSocket.OPEN) {
         fullscreenButton.disabled = false;
+        chatCaptureButton.disabled = false;
         updateAskButton();
       }
     }, 1500);

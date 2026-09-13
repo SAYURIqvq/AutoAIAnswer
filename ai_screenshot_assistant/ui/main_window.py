@@ -598,6 +598,7 @@ class MainWindow(QMainWindow):
                 return
             if clicked is exit_app:
                 self._force_quit = True
+                event.accept()
         self.overlay.close()
         if self.mouse_listener is not None:
             self.mouse_listener.stop()
@@ -608,3 +609,5 @@ class MainWindow(QMainWindow):
         if self.tray_icon is not None:
             self.tray_icon.hide()
         super().closeEvent(event)
+        if self._force_quit:
+            QApplication.quit()

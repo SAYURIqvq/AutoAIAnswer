@@ -159,8 +159,8 @@ class AssistantWorkflow:
         use_conversation: bool = False,
         is_chat: bool = False,
     ) -> None:
-        if not png_images:
-            self._fail("至少需要 1 张截图")
+        if not png_images and not (user_text or "").strip():
+            self._fail("请输入文字或至少添加 1 张截图")
             return
         started_payload: dict[str, Any] = {
             "mode": "mobile_screenshots",

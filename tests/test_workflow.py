@@ -227,3 +227,32 @@ def test_mobile_multi_screenshot_submission_uses_all_images() -> None:
         "conversation_turns": 0,
         "chat": True,
     }
+
+
+def test_mobile_text_only_chat_is_allowed() -> None:
+    publisher = FakePublisher()
+    ai_client = FakeAI()
+    workflow = AssistantWorkflow(
+        session_id="s1",
+        capture=FakeCapture(),
+        ai_client=ai_client,
+        publisher=publisher,
+        app_settings=replace(settings, save_debug_image=False),
+    )
+
+    workflow.process_mobile_images(
+        [],
+        user_text="继续解释上一题",
+        use_conversation=True,
+        is_chat=True,
+    )
+
+    assert ai_client.calls[0]["png_images"] == []
+    assert ai_client.calls[0]["user_text"] == "继续解释上一题"
+    assert publisher.events[1]["payload"] == {
+        "mode": "mobile_screenshots",
+        "image_count": 0,
+        "has_user_text": True,
+        "conversation_turns": 0,
+        "chat": True,
+    }
