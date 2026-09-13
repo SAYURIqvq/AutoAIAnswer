@@ -1,4 +1,4 @@
-from ai_screenshot_assistant.ai.client import OpenRouterVisionClient, parse_ai_result
+from ai_screenshot_assistant.ai.client import OpenRouterVisionClient, ProviderConfig, parse_ai_result
 
 
 def test_parse_json_ai_result() -> None:
@@ -49,3 +49,43 @@ def test_parse_questions_json() -> None:
     assert result.answer == "第1题 B；第2题 A"
     assert result.reason == "第1题：TCP\n第2题：UDP"
 
+
+def test_openrouter_request_disables_reasoning_and_uses_low_latency_stream(monkeypatch) -> None:
+    captured = {}
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def raise_for_status(self):
+            return None
+
+        def iter_lines(self, **kwargs):
+            captured["iter_lines_kwargs"] = kwargs
+            yield b'data: {"choices":[{"delta":{"content":"A"}}]}'
+            yield b"data: [DONE]"
+
+    def fake_post(url, **kwargs):
+        captured["url"] = url
+        captured["json"] = kwargs["json"]
+        captured["stream"] = kwargs["stream"]
+        return Response()
+
+    monkeypatch.setattr("ai_screenshot_assistant.ai.client.requests.post", fake_post)
+    client = OpenRouterVisionClient(
+        ProviderConfig(
+            name="OpenRouter",
+            api_key="key",
+            base_url="https://openrouter.ai/api/v1",
+            model="qwen/qwen3.8-flash",
+        )
+    )
+
+    assert list(client.analyze_image_stream(b"png")) == ["A"]
+    assert captured["stream"] is True
+    assert captured["json"]["stream"] is True
+    assert captured["json"]["reasoning_effort"] == "none"
+    assert captured["iter_lines_kwargs"] == {"chunk_size": 1, "decode_unicode": False}

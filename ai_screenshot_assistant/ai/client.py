@@ -154,6 +154,8 @@ class VisionClient:
                 }
             ],
         }
+        if "openrouter.ai" in self.provider.base_url:
+            payload["reasoning_effort"] = "none"
         headers = {
             "Authorization": f"Bearer {self.provider.api_key}",
             "Content-Type": "application/json",
@@ -168,7 +170,7 @@ class VisionClient:
             timeout=self.provider.timeout_seconds,
         ) as response:
             response.raise_for_status()
-            for raw_line in response.iter_lines(decode_unicode=False):
+            for raw_line in response.iter_lines(chunk_size=1, decode_unicode=False):
                 if not raw_line:
                     continue
                 line = raw_line.decode("utf-8", errors="replace")
