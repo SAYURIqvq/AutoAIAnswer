@@ -33,12 +33,12 @@ jobs:
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
         with:
-          name: QQ音乐-macOS
-          path: dist/QQ音乐-macOS.dmg
+          name: QQMusic-macOS
+          path: dist/QQMusic-macOS.dmg
           if-no-files-found: error
 
       - name: Attach DMG to tagged release
         if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$GITHUB_REF_NAME" dist/QQ音乐-macOS.dmg --clobber
+        run: gh release upload "$GITHUB_REF_NAME" dist/QQMusic-macOS.dmg --clobber

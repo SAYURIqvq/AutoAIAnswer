@@ -6,7 +6,7 @@ if not exist .venv (
 )
 call .venv\Scripts\activate
 python -m pip install -r requirements.txt
-pyinstaller --noconfirm --clean --onefile --windowed --name QQ音乐 ^
+pyinstaller --noconfirm --clean --onefile --windowed --name QQMusic ^
   --icon assets\app.ico ^
   --add-data "ai_screenshot_assistant\web\static;ai_screenshot_assistant\web\static" ^
   --add-data "assets;assets" ^
@@ -26,4 +26,4 @@ pyinstaller --noconfirm --clean --onefile --windowed --name QQ音乐 ^
   --exclude-module cv2 ^
   --exclude-module tkinter ^
   main.py
-echo Built: dist\QQ音乐.exe
+echo Built: dist\QQMusic.exe

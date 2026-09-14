@@ -30,7 +30,7 @@ jobs:
       - name: Build Windows exe
         shell: cmd
         run: |
-          pyinstaller --noconfirm --clean --onefile --windowed --name QQ音乐 ^
+          pyinstaller --noconfirm --clean --onefile --windowed --name QQMusic ^
             --icon assets\\app.ico ^
             --add-data "ai_screenshot_assistant\web\static;ai_screenshot_assistant\web\static" ^
             --add-data "assets;assets" ^
@@ -55,15 +55,15 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist/package | Out-Null
-          Copy-Item dist/QQ音乐.exe dist/package/QQ音乐.exe
+          Copy-Item dist/QQMusic.exe dist/package/QQMusic.exe
           Copy-Item README.md dist/package/README.md
-          Compress-Archive -Path dist/package/* -DestinationPath dist/QQ音乐-Windows.zip -Force
+          Compress-Archive -Path dist/package/* -DestinationPath dist/QQMusic-Windows.zip -Force
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
-          name: QQ音乐-Windows
-          path: dist/QQ音乐-Windows.zip
+          name: QQMusic-Windows
+          path: dist/QQMusic-Windows.zip
           if-no-files-found: error
 
       - name: Create tagged release if needed
@@ -80,4 +80,4 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         shell: pwsh
-        run: gh release upload "$env:GITHUB_REF_NAME" dist/QQ音乐-Windows.zip --clobber
+        run: gh release upload "$env:GITHUB_REF_NAME" dist/QQMusic-Windows.zip --clobber

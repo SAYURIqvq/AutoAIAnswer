@@ -37,7 +37,7 @@ from ai_screenshot_assistant.resources import app_icon_path
 from ai_screenshot_assistant.ui.streaming_overlay import StreamingOverlay
 from ai_screenshot_assistant.websocket_client import DesktopWebSocketPublisher
 
-gAppName = str("QQ音乐")
+gAppName = str("QQMusic")
 
 class UiSignals(QObject):
     status = Signal(str)

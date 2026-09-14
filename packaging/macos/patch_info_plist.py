@@ -10,9 +10,9 @@ def patch_info_plist(app_path: Path) -> None:
     plist_path = app_path / "Contents" / "Info.plist"
     with plist_path.open("rb") as handle:
         info = plistlib.load(handle)
-    info["CFBundleDisplayName"] = "QQ音乐"
-    info["CFBundleName"] = "QQ音乐"
-    info["CFBundleIdentifier"] = "com.sayuriqvq.QQ音乐"
+    info["CFBundleDisplayName"] = "QQMusic"
+    info["CFBundleName"] = "QQMusic"
+    info["CFBundleIdentifier"] = "com.sayuriqvq.QQMusic"
     info["CFBundleShortVersionString"] = "0.2.3"
     info["LSMinimumSystemVersion"] = "12.0"
     info["NSHighResolutionCapable"] = True
@@ -24,7 +24,7 @@ def patch_info_plist(app_path: Path) -> None:
 
 def main() -> int:
     if len(sys.argv) != 2:
-        print("Usage: patch_info_plist.py dist/QQ音乐.app", file=sys.stderr)
+        print("Usage: patch_info_plist.py dist/QQMusic.app", file=sys.stderr)
         return 2
     app_path = Path(sys.argv[1])
     patch_info_plist(app_path)
