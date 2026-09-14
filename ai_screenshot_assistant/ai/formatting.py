@@ -56,8 +56,13 @@ def format_sql(sql: str) -> str:
     sql = _normalize_sql(sql)
     if not sql:
         return sql
+    statements = _split_sql_statements(sql)
+    if len(statements) > 1:
+        return "\n".join(format_sql(statement) for statement in statements)
     if re.match(r"^ALTER\s+TABLE\b", sql, re.IGNORECASE):
         return _format_alter_table(sql)
+    if re.match(r"^CREATE\s+TABLE\b", sql, re.IGNORECASE):
+        return _format_create_table(sql)
 
     matches = list(_CLAUSE_PATTERN.finditer(sql))
     if not matches:
@@ -72,6 +77,9 @@ def format_sql(sql: str) -> str:
         if keyword == "SELECT":
             lines.append("SELECT")
             lines.extend(f"    {part}" for part in _split_select_items(body))
+        elif keyword == "SET":
+            lines.append("SET")
+            lines.extend(f"    {part}" for part in _split_assignment_items(body))
         else:
             lines.append(keyword)
             if body:
@@ -98,20 +106,11 @@ def _wrap_answer_sql(text: str) -> str:
     prefix, answer, reason = match.groups()
     if not _SQL_START.search(answer):
         return text
-    sql, suffix = _split_sql_and_suffix(answer)
+    sql = answer.strip()
     formatted = f"{prefix}\n```sql\n{format_sql(sql)}\n```"
-    if suffix:
-        formatted += "\n" + suffix.strip()
     if reason:
         formatted += "\n" + reason.strip()
     return formatted
-
-
-def _split_sql_and_suffix(value: str) -> tuple[str, str]:
-    semicolon = value.find(";")
-    if semicolon >= 0:
-        return value[: semicolon + 1].strip(), value[semicolon + 1 :].strip()
-    return value.strip(), ""
 
 
 def _normalize_sql(sql: str) -> str:
@@ -128,8 +127,53 @@ def _keyword_label(keyword: str) -> str:
 def _split_select_items(body: str) -> list[str]:
     if not body:
         return []
-    pieces = [piece.strip() for piece in body.split(",")]
+    pieces = _split_top_level_commas(body)
+    if len(pieces) == 1:
+        return pieces
     return [piece + ("," if index < len(pieces) - 1 else "") for index, piece in enumerate(pieces) if piece]
+
+
+def _split_assignment_items(body: str) -> list[str]:
+    pieces = _split_top_level_commas(body)
+    if len(pieces) == 1:
+        return pieces
+    return [piece + ("," if index < len(pieces) - 1 else "") for index, piece in enumerate(pieces) if piece]
+
+
+def _format_create_table(sql: str) -> str:
+    match = re.match(
+        r"^CREATE\s+TABLE\s+(`[^`]+`|\"[^\"]+\"|[\w.]+)\s*\((.+)\);?$",
+        sql,
+        re.IGNORECASE | re.DOTALL,
+    )
+    if not match:
+        return _format_keyword_clauses(sql)
+
+    table_name, body = match.groups()
+    has_semicolon = sql.endswith(";")
+    columns = _split_top_level_commas(body)
+    lines = [f"CREATE TABLE {table_name} ("]
+    for index, column in enumerate(columns):
+        suffix = "," if index < len(columns) - 1 else ""
+        lines.append(f"    {column}{suffix}")
+    lines.append(")" + (";" if has_semicolon else ""))
+    return "\n".join(lines)
+
+
+def _format_keyword_clauses(sql: str) -> str:
+    matches = list(_CLAUSE_PATTERN.finditer(sql))
+    if not matches:
+        return sql
+    lines: list[str] = []
+    for index, match in enumerate(matches):
+        keyword = _keyword_label(match.group(1))
+        start = match.end()
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(sql)
+        body = sql[start:end].strip()
+        lines.append(keyword)
+        if body:
+            lines.append(f"    {body}")
+    return "\n".join(line for line in lines if line.strip())
 
 
 def _format_alter_table(sql: str) -> str:
@@ -153,9 +197,45 @@ def _format_alter_table(sql: str) -> str:
 
 def _format_alter_action(action: str) -> str:
     action = action.strip()
-    action = re.sub(r"\b(ADD|CHANGE|MODIFY|DROP)\s+COLUMN\b", lambda m: m.group(0).upper(), action, flags=re.IGNORECASE)
-    action = re.sub(r"\b(AFTER|FIRST|NULL|NOT NULL|DEFAULT|COMMENT)\b", lambda m: m.group(0).upper(), action, flags=re.IGNORECASE)
+    action = re.sub(
+        r"\b(ADD|ALTER|CHANGE|MODIFY|DROP)\s+COLUMN\b",
+        lambda m: m.group(0).upper(),
+        action,
+        flags=re.IGNORECASE,
+    )
+    action = re.sub(
+        r"\b(AFTER|FIRST|NOT\s+NULL|NULL|SET\s+DEFAULT|DEFAULT|COMMENT)\b",
+        lambda m: re.sub(r"\s+", " ", m.group(0).upper()),
+        action,
+        flags=re.IGNORECASE,
+    )
     return action
+
+
+def _split_sql_statements(value: str) -> list[str]:
+    parts: list[str] = []
+    start = 0
+    quote: str | None = None
+    index = 0
+    while index < len(value):
+        char = value[index]
+        if quote:
+            if char == quote:
+                quote = None
+            elif char == "\\":
+                index += 1
+        elif char in {"'", '"', "`"}:
+            quote = char
+        elif char == ";":
+            statement = value[start : index + 1].strip()
+            if statement:
+                parts.append(statement)
+            start = index + 1
+        index += 1
+    tail = value[start:].strip()
+    if tail:
+        parts.append(tail)
+    return parts
 
 
 def _split_top_level_commas(value: str) -> list[str]:
