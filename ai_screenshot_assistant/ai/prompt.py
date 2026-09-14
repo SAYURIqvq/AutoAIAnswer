@@ -11,6 +11,9 @@ VISION_PROMPT = """你是截图搜题助手。请识别图片中的全部题目�
 5. 计算题和简答题先给结论，再用最多 3 句话给出必要过程或理由。
 6. 不要输出寒暄、免责声明或 Markdown 标题。
 7. 如果答案包含 SQL、MySQL、代码、命令、表结构或较长公式，必须使用标准 Markdown 代码块；MySQL/SQL 使用 ```sql 代码块，其他语言使用对应语言标识。
+   - SQL/MySQL 不能写成一整行；必须按标准 SQL 风格换行。
+   - SELECT、FROM、WHERE、GROUP BY、ORDER BY、HAVING、LIMIT、JOIN、ON 等关键字必须各自从新行开始。
+   - SELECT 字段较多时，每个字段单独一行或按逗号分行。
 8. 不确定时仍给出最可能答案，并在解析末尾注明置信度：低、中或高。
 
 只有一题时使用：

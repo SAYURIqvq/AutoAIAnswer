@@ -41,7 +41,7 @@ class DesktopWebSocketPublisher:
                 return
             try:
                 if websocket is None:
-                    websocket = await websockets.connect(self.url, proxy=None)
+                    websocket = await websockets.connect(self.url, proxy=None, max_size=None)
                 await websocket.send(json.dumps(pending.event, ensure_ascii=False))
                 pending.future.set_result(None)
             except Exception as exc:

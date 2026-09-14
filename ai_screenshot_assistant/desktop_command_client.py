@@ -24,7 +24,7 @@ class DesktopCommandClient:
     async def _run(self) -> None:
         while not self._closed:
             try:
-                async with websockets.connect(self.url, proxy=None) as websocket:
+                async with websockets.connect(self.url, proxy=None, max_size=None) as websocket:
                     async for message in websocket:
                         try:
                             data = json.loads(message)

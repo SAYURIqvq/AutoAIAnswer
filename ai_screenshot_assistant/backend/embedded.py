@@ -22,6 +22,7 @@ class EmbeddedBackend:
                 port=self.port,
                 log_level="warning",
                 use_colors=False,
+                ws_max_size=64 * 1024 * 1024,
             )
         )
         self._thread = threading.Thread(target=self._server.run, daemon=True)

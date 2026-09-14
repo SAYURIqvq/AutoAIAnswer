@@ -6,7 +6,8 @@ from pathlib import Path
 from typing import Any, Protocol
 from uuid import uuid4
 
-from ai_screenshot_assistant.ai.client import parse_ai_result
+from ai_screenshot_assistant.ai.client import parse_ai_result, prepare_image_for_ai
+from ai_screenshot_assistant.ai.formatting import format_ai_output
 from ai_screenshot_assistant.config import Settings, settings
 from ai_screenshot_assistant.core.messages import Event
 from ai_screenshot_assistant.capture.roi import Roi, RoiStateMachine
@@ -140,13 +141,15 @@ class AssistantWorkflow:
         request_id = uuid4().hex
         try:
             png = self.capture.capture_fullscreen_png(x, y, debug_path=self._debug_path())
-            image_b64 = base64.b64encode(png).decode("ascii")
+            image_bytes, mime_type = prepare_image_for_ai(png)
+            image_b64 = base64.b64encode(image_bytes).decode("ascii")
             self._publish(
                 "screenshot.captured",
                 request_id,
                 {
-                    "image": f"data:image/png;base64,{image_b64}",
-                    "size": len(png),
+                    "image": f"data:{mime_type};base64,{image_b64}",
+                    "size": len(image_bytes),
+                    "original_size": len(png),
                 },
             )
             self._publish_selection_status("completed", "截图已添加到手机端缓冲区，可继续截图或发送")
@@ -227,7 +230,7 @@ class AssistantWorkflow:
                 chunks.append(delta)
                 self.on_stream_delta(delta)
                 self._publish("answer.delta", request_id, {"delta": delta})
-            text = "".join(chunks)
+            text = format_ai_output("".join(chunks))
             if use_conversation:
                 self._remember_mobile_turn(
                     user_text.strip() if user_text and user_text.strip() else f"用户发送了 {len(png_images)} 张截图",

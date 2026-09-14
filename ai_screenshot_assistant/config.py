@@ -45,7 +45,7 @@ class Settings:
     backend_url: str = os.getenv("BACKEND_URL", "auto")
     backend_port: int = int(os.getenv("BACKEND_PORT", "8000"))
     embedded_backend: bool = _bool_env("EMBEDDED_BACKEND", True)
-    request_timeout_seconds: float = float(os.getenv("REQUEST_TIMEOUT_SECONDS", "30"))
+    request_timeout_seconds: float = float(os.getenv("REQUEST_TIMEOUT_SECONDS", "90"))
     save_debug_image: bool = _bool_env("SAVE_DEBUG_IMAGE", False)
 
 

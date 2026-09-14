@@ -147,7 +147,7 @@ class VisionClient:
             raise RuntimeError(f"{self.provider.name} API Key 不能为空")
         content: list[dict[str, Any]] = [{"type": "text", "text": _build_user_prompt(user_text, conversation)}]
         for png_bytes in png_images:
-            image_bytes, mime_type = _prepare_image_for_ai(png_bytes)
+            image_bytes, mime_type = prepare_image_for_ai(png_bytes)
             image_b64 = base64.b64encode(image_bytes).decode("ascii")
             content.append({"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{image_b64}"}})
         payload = {
@@ -220,7 +220,7 @@ def _build_user_prompt(user_text: str | None, conversation: list[dict[str, str]]
     return "\n\n".join(parts)
 
 
-def _prepare_image_for_ai(image_bytes: bytes) -> tuple[bytes, str]:
+def prepare_image_for_ai(image_bytes: bytes) -> tuple[bytes, str]:
     try:
         image = Image.open(io.BytesIO(image_bytes))
         width, height = image.size
@@ -244,6 +244,9 @@ def _prepare_image_for_ai(image_bytes: bytes) -> tuple[bytes, str]:
     buffer = io.BytesIO()
     image.save(buffer, format="JPEG", quality=AI_IMAGE_JPEG_QUALITY, optimize=True)
     return buffer.getvalue(), "image/jpeg"
+
+
+_prepare_image_for_ai = prepare_image_for_ai
 
 
 def _format_conversation(conversation: list[dict[str, str]]) -> str:

@@ -1,4 +1,7 @@
+import io
 from dataclasses import replace
+
+from PIL import Image
 
 from ai_screenshot_assistant.config import settings
 from ai_screenshot_assistant.core.workflow import AssistantWorkflow
@@ -15,6 +18,15 @@ class FakeCapture:
     def capture_fullscreen_png(self, x=None, y=None, debug_path=None):
         self.fullscreen_args = (x, y)
         return b"fullpng"
+
+
+class LargeImageCapture(FakeCapture):
+    def capture_fullscreen_png(self, x=None, y=None, debug_path=None):
+        self.fullscreen_args = (x, y)
+        image = Image.effect_noise((2200, 1600), 100).convert("RGB")
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        return buffer.getvalue()
 
 
 class FakeAI:
@@ -49,6 +61,12 @@ class FakeAI:
             yield '{"answer":"A",'
             yield '"reason":"multi image",'
             yield '"confidence":"0.91"}'
+
+
+class SqlAI:
+    def analyze_images_stream(self, png_images, user_text=None, conversation=None):
+        yield "答案：SELECT name, age FROM users WHERE age > 18 ORDER BY age DESC;\n"
+        yield "解析：查询成年用户。"
 
 
 class FailingAI:
@@ -221,6 +239,23 @@ def test_mobile_fullscreen_preview_publishes_screenshot() -> None:
     assert publisher.events[0]["payload"]["size"] == len(b"fullpng")
 
 
+def test_mobile_fullscreen_preview_compresses_large_screenshot() -> None:
+    publisher = FakePublisher()
+    workflow = AssistantWorkflow(
+        session_id="s1",
+        capture=LargeImageCapture(),
+        ai_client=FakeAI(),
+        publisher=publisher,
+        app_settings=replace(settings, save_debug_image=False),
+    )
+
+    workflow.capture_fullscreen_for_mobile(10, 20)
+
+    payload = publisher.events[0]["payload"]
+    assert payload["image"].startswith("data:image/jpeg;base64,")
+    assert payload["size"] < payload["original_size"]
+
+
 def test_mobile_multi_screenshot_submission_uses_all_images() -> None:
     publisher = FakePublisher()
     ai_client = FakeAI()
@@ -307,6 +342,26 @@ def test_mobile_text_only_chat_is_allowed() -> None:
         "conversation_turns": 0,
         "chat": True,
     }
+
+
+def test_sql_answer_is_formatted_before_completion() -> None:
+    publisher = FakePublisher()
+    workflow = AssistantWorkflow(
+        session_id="s1",
+        capture=FakeCapture(),
+        ai_client=SqlAI(),
+        publisher=publisher,
+        app_settings=replace(settings, save_debug_image=False),
+    )
+
+    workflow.process_mobile_images([b"one"], request_id="chat-sql")
+
+    completed = [event for event in publisher.events if event["type"] == "answer.completed"][0]
+    text = completed["payload"]["result"]["text"]
+    assert "```sql" in text
+    assert "SELECT\n    name," in text
+    assert "\nFROM\n    users" in text
+    assert "\nWHERE\n    age > 18" in text
 
 
 def test_mobile_ai_error_is_published() -> None:
