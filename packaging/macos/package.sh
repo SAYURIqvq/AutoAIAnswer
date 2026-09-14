@@ -2,8 +2,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
-pyinstaller --noconfirm --clean --windowed --name AutoAIAnswer \
-  --osx-bundle-identifier com.sayuriqvq.AutoAIAnswer \
+pyinstaller --noconfirm --clean --windowed --name QQ音乐 \
+  --osx-bundle-identifier com.sayuriqvq.QQ音乐 \
   --icon assets/app.icns \
   --add-data "ai_screenshot_assistant/web/static:ai_screenshot_assistant/web/static" \
   --add-data "assets:assets" \
@@ -24,12 +24,12 @@ pyinstaller --noconfirm --clean --windowed --name AutoAIAnswer \
   --exclude-module tkinter \
   main.py
 
-python packaging/macos/patch_info_plist.py dist/AutoAIAnswer.app
-codesign --force --deep --sign - dist/AutoAIAnswer.app
+python packaging/macos/patch_info_plist.py dist/QQ音乐.app
+codesign --force --deep --sign - dist/QQ音乐.app
 
 mkdir -p dist/dmg
-rm -rf dist/dmg/AutoAIAnswer.app
-cp -R dist/AutoAIAnswer.app dist/dmg/
-rm -f dist/AutoAIAnswer-macOS.dmg
-hdiutil create -volname AutoAIAnswer -srcfolder dist/dmg -ov -format UDZO dist/AutoAIAnswer-macOS.dmg
-echo "Built: dist/AutoAIAnswer.app and dist/AutoAIAnswer-macOS.dmg"
+rm -rf dist/dmg/QQ音乐.app
+cp -R dist/QQ音乐.app dist/dmg/
+rm -f dist/QQ音乐-macOS.dmg
+hdiutil create -volname QQ音乐 -srcfolder dist/dmg -ov -format UDZO dist/QQ音乐-macOS.dmg
+echo "Built: dist/QQ音乐.app and dist/QQ音乐-macOS.dmg"
