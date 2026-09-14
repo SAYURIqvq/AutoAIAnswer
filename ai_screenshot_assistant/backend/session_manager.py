@@ -8,6 +8,8 @@ from uuid import uuid4
 
 from fastapi import WebSocket
 
+MAX_SESSION_EVENTS = 300
+
 
 @dataclass
 class Session:
@@ -60,6 +62,8 @@ class SessionManager:
         enriched["event_id"] = session.next_event_id
         session.next_event_id += 1
         session.events.append(enriched)
+        if len(session.events) > MAX_SESSION_EVENTS:
+            session.events = session.events[-MAX_SESSION_EVENTS:]
         return enriched
 
     def since(self, session: Session, last_event_id: int) -> list[dict[str, Any]]:

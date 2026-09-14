@@ -144,6 +144,10 @@ def _mobile_command_payload(data: dict[str, Any]) -> dict[str, Any]:
         payload["conversation"] = True
     if bool(source_payload.get("chat") or data.get("chat")):
         payload["chat"] = True
+    raw_client_request_id = source_payload.get("client_request_id") or data.get("client_request_id")
+    client_request_id = str(raw_client_request_id or "").strip()
+    if client_request_id:
+        payload["client_request_id"] = client_request_id[:120]
     raw_images = source_payload.get("images") or data.get("images")
     if isinstance(raw_images, list):
         payload["images"] = [str(image) for image in raw_images[:5] if isinstance(image, str)]

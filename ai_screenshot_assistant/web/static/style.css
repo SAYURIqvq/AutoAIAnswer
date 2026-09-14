@@ -165,7 +165,6 @@ h1 { margin: 0; font-size: 20px; }
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 10px 12px;
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
   font-size: 16px;
   line-height: 1.55;
@@ -192,6 +191,40 @@ h1 { margin: 0; font-size: 20px; }
   color: #07503b;
   font-size: 12px;
   font-weight: 700;
+}
+
+.chat-content {
+  width: 100%;
+}
+
+.text-block {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.code-block {
+  margin: 8px 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #050b14;
+  color: #f5f7fb;
+  overflow-x: auto;
+  white-space: pre;
+  font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+
+.code-block code {
+  font: inherit;
+}
+
+.code-block code[data-language]::before {
+  content: attr(data-language);
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font: 11px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  text-transform: uppercase;
 }
 
 .preview-panel {
@@ -308,7 +341,7 @@ h1 { margin: 0; font-size: 20px; }
   border-radius: 10px;
   background: var(--panel);
   color: var(--text);
-  white-space: pre-wrap;
+  white-space: normal;
   overflow-wrap: anywhere;
   overflow-y: auto;
   overscroll-behavior: contain;

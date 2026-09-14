@@ -109,11 +109,12 @@ class AssistantWorkflow:
         user_text: str | None = None,
         use_conversation: bool = False,
         is_chat: bool = False,
+        request_id: str | None = None,
     ) -> None:
         self.roi.reset()
         self.on_status("Fullscreen captured; analyzing...")
         self._publish_selection_status("capturing", "已截取当前屏幕全屏，正在发送给 AI")
-        request_id = uuid4().hex
+        request_id = request_id or uuid4().hex
         started_at = time.perf_counter()
         started_payload: dict[str, Any] = {"mode": "fullscreen"}
         if user_text:
@@ -158,6 +159,7 @@ class AssistantWorkflow:
         user_text: str | None = None,
         use_conversation: bool = False,
         is_chat: bool = False,
+        request_id: str | None = None,
     ) -> None:
         if not png_images and not (user_text or "").strip():
             self._fail("请输入文字或至少添加 1 张截图")
@@ -174,7 +176,7 @@ class AssistantWorkflow:
             started_payload["chat"] = True
         self._analyze_pngs(
             png_images,
-            uuid4().hex,
+            request_id or uuid4().hex,
             time.perf_counter(),
             started_payload,
             user_text=user_text,
@@ -211,36 +213,42 @@ class AssistantWorkflow:
         user_text: str | None = None,
         use_conversation: bool = False,
     ) -> None:
-        self._publish_selection_status("analyzing", "截图成功，AI 正在分析全部题目")
-        self.on_stream_started()
-        self._publish("answer.started", request_id, started_payload)
-        chunks: list[str] = []
-        conversation = list(self.mobile_conversation) if use_conversation else None
-        if hasattr(self.ai_client, "analyze_images_stream"):
-            stream = self.ai_client.analyze_images_stream(png_images, user_text=user_text, conversation=conversation)
-        else:
-            stream = self.ai_client.analyze_image_stream(png_images[0], user_text=user_text, conversation=conversation)
-        for delta in stream:
-            chunks.append(delta)
-            self.on_stream_delta(delta)
-            self._publish("answer.delta", request_id, {"delta": delta})
-        text = "".join(chunks)
-        if use_conversation and user_text and user_text.strip():
-            self._remember_mobile_turn(user_text.strip(), text)
-        result = parse_ai_result(text)
-        payload = {
-            "result": {
-                "text": result.text,
-                "answer": result.answer,
-                "reason": result.reason,
-                "confidence": result.confidence,
-                "latency_seconds": round(time.perf_counter() - started_at, 3),
+        try:
+            self._publish_selection_status("analyzing", "截图成功，AI 正在分析全部题目")
+            self.on_stream_started()
+            self._publish("answer.started", request_id, started_payload)
+            chunks: list[str] = []
+            conversation = list(self.mobile_conversation) if use_conversation else None
+            if hasattr(self.ai_client, "analyze_images_stream"):
+                stream = self.ai_client.analyze_images_stream(png_images, user_text=user_text, conversation=conversation)
+            else:
+                stream = self.ai_client.analyze_image_stream(png_images[0], user_text=user_text, conversation=conversation)
+            for delta in stream:
+                chunks.append(delta)
+                self.on_stream_delta(delta)
+                self._publish("answer.delta", request_id, {"delta": delta})
+            text = "".join(chunks)
+            if use_conversation:
+                self._remember_mobile_turn(
+                    user_text.strip() if user_text and user_text.strip() else f"用户发送了 {len(png_images)} 张截图",
+                    text,
+                )
+            result = parse_ai_result(text)
+            payload = {
+                "result": {
+                    "text": result.text,
+                    "answer": result.answer,
+                    "reason": result.reason,
+                    "confidence": result.confidence,
+                    "latency_seconds": round(time.perf_counter() - started_at, 3),
+                }
             }
-        }
-        self._publish("answer.completed", request_id, payload)
-        self.on_stream_completed(text)
-        self.on_result(payload["result"])
-        self._publish_selection_status("completed", "答案已生成，可以继续框选或全屏截题")
+            self._publish("answer.completed", request_id, payload)
+            self.on_stream_completed(text)
+            self.on_result(payload["result"])
+            self._publish_selection_status("completed", "答案已生成，可以继续框选或全屏截题")
+        except Exception as exc:
+            self._fail(str(exc), request_id=request_id)
 
     def _remember_mobile_turn(self, user_text: str, assistant_text: str) -> None:
         self.mobile_conversation.extend(

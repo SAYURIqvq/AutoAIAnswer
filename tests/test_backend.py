@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
 from ai_screenshot_assistant.backend.app import app
+from ai_screenshot_assistant.backend.session_manager import MAX_SESSION_EVENTS, SessionManager
 
 
 def test_create_session_and_mobile_page() -> None:
@@ -98,6 +99,26 @@ def test_mobile_fullscreen_command_forwards_chat_payload() -> None:
     }
 
 
+def test_mobile_fullscreen_command_forwards_client_request_id() -> None:
+    client = TestClient(app)
+    session = client.post("/sessions").json()
+    session_id = session["session_id"]
+
+    with client.websocket_connect(f"/ws/desktop-commands/{session_id}") as desktop_commands:
+        with client.websocket_connect(f"/ws/mobile/{session_id}") as mobile:
+            mobile.receive_json()
+            mobile.send_text(
+                '{"type":"command.fullscreen","payload":{"client_request_id":"fullscreen-123"}}'
+            )
+            command = desktop_commands.receive_json()
+
+    assert command["type"] == "command.fullscreen"
+    assert command["payload"] == {
+        "source": "mobile",
+        "client_request_id": "fullscreen-123",
+    }
+
+
 def test_mobile_capture_fullscreen_command_reaches_desktop_command_socket() -> None:
     client = TestClient(app)
     session = client.post("/sessions").json()
@@ -133,3 +154,36 @@ def test_mobile_submit_screenshots_forwards_images_without_text() -> None:
         "chat": True,
         "images": ["img1", "img2"],
     }
+
+
+def test_mobile_submit_screenshots_forwards_client_request_id() -> None:
+    client = TestClient(app)
+    session = client.post("/sessions").json()
+    session_id = session["session_id"]
+
+    with client.websocket_connect(f"/ws/desktop-commands/{session_id}") as desktop_commands:
+        with client.websocket_connect(f"/ws/mobile/{session_id}") as mobile:
+            mobile.receive_json()
+            mobile.send_text(
+                '{"type":"command.submit_screenshots","payload":{"text":"继续","client_request_id":"chat-456"}}'
+            )
+            command = desktop_commands.receive_json()
+
+    assert command["type"] == "command.submit_screenshots"
+    assert command["payload"] == {
+        "source": "mobile",
+        "text": "继续",
+        "client_request_id": "chat-456",
+    }
+
+
+def test_session_events_are_bounded() -> None:
+    manager = SessionManager()
+    session = manager.create_session()
+
+    for index in range(MAX_SESSION_EVENTS + 25):
+        manager.append_event(session, {"type": "answer.delta", "payload": {"delta": str(index)}})
+
+    assert len(session.events) == MAX_SESSION_EVENTS
+    assert session.events[0]["event_id"] == 26
+    assert session.events[-1]["event_id"] == MAX_SESSION_EVENTS + 25

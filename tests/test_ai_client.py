@@ -1,4 +1,14 @@
-from ai_screenshot_assistant.ai.client import OpenRouterVisionClient, ProviderConfig, parse_ai_result
+import io
+
+from PIL import Image
+
+from ai_screenshot_assistant.ai.client import (
+    AI_IMAGE_MAX_SIDE,
+    OpenRouterVisionClient,
+    ProviderConfig,
+    _prepare_image_for_ai,
+    parse_ai_result,
+)
 
 
 def test_parse_json_ai_result() -> None:
@@ -89,3 +99,15 @@ def test_openrouter_request_disables_reasoning_and_uses_low_latency_stream(monke
     assert captured["json"]["stream"] is True
     assert captured["json"]["reasoning_effort"] == "none"
     assert captured["iter_lines_kwargs"] == {"chunk_size": 1, "decode_unicode": False}
+
+
+def test_large_images_are_resized_and_compressed_for_ai() -> None:
+    source = Image.new("RGB", (2200, 1600), color=(245, 245, 245))
+    source_buffer = io.BytesIO()
+    source.save(source_buffer, format="PNG")
+
+    image_bytes, mime_type = _prepare_image_for_ai(source_buffer.getvalue())
+
+    assert mime_type == "image/jpeg"
+    prepared = Image.open(io.BytesIO(image_bytes))
+    assert max(prepared.size) == AI_IMAGE_MAX_SIDE

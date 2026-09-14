@@ -20,8 +20,72 @@
   let socket = null;
   let activeChatRequestId = null;
   let activeAssistantBubble = null;
+  let activeAssistantText = "";
+  let activeDirectRequestId = null;
+  let renderScheduled = false;
   let screenshots = [];
+  let requestCounter = 0;
   const maxScreenshots = 5;
+  const maxChatMessages = 80;
+  const maxRenderChars = 100000;
+
+  function nextRequestId(prefix) {
+    requestCounter += 1;
+    return `${prefix}-${Date.now()}-${requestCounter}`;
+  }
+
+  function capText(text) {
+    const value = text || "";
+    if (value.length <= maxRenderChars) {
+      return value;
+    }
+    return `内容较长，仅显示最后 ${maxRenderChars} 个字符。\n\n` + value.slice(-maxRenderChars);
+  }
+
+  function appendTextBlock(container, text) {
+    if (!text) {
+      return;
+    }
+    const block = document.createElement("div");
+    block.className = "text-block";
+    block.textContent = text;
+    container.appendChild(block);
+  }
+
+  function renderFormattedText(container, text) {
+    const value = capText(text);
+    container.textContent = "";
+    const codePattern = /```([a-zA-Z0-9_+-]*)\s*\n?([\s\S]*?)```/g;
+    let lastIndex = 0;
+    let match = codePattern.exec(value);
+    while (match) {
+      appendTextBlock(container, value.slice(lastIndex, match.index));
+      const pre = document.createElement("pre");
+      pre.className = "code-block";
+      const code = document.createElement("code");
+      if (match[1]) {
+        code.dataset.language = match[1].toLowerCase();
+      }
+      code.textContent = match[2].trimEnd();
+      pre.appendChild(code);
+      container.appendChild(pre);
+      lastIndex = codePattern.lastIndex;
+      match = codePattern.exec(value);
+    }
+    appendTextBlock(container, value.slice(lastIndex));
+  }
+
+  function setOutput(text) {
+    renderFormattedText(outputEl, text || "");
+  }
+
+  function trimChatMessages() {
+    const messages = chatList.querySelectorAll(".chat-message");
+    const extra = messages.length - maxChatMessages;
+    for (let index = 0; index < extra; index += 1) {
+      messages[index].remove();
+    }
+  }
 
   function setConnectionStatus(value, online) {
     statusEl.textContent = value;
@@ -87,28 +151,41 @@
     }
     const content = document.createElement("div");
     content.className = "chat-content";
-    content.textContent = text;
+    renderFormattedText(content, text);
     bubble.appendChild(content);
     item.appendChild(bubble);
     chatList.appendChild(item);
+    trimChatMessages();
     chatList.scrollTop = chatList.scrollHeight;
     return content;
   }
 
   function startAssistantMessage(requestId) {
     activeChatRequestId = requestId;
+    activeAssistantText = "";
     activeAssistantBubble = appendMessage("assistant", "分析中…", 0);
+  }
+
+  function scheduleAssistantRender() {
+    if (renderScheduled) {
+      return;
+    }
+    renderScheduled = true;
+    requestAnimationFrame(function () {
+      renderScheduled = false;
+      if (activeAssistantBubble) {
+        renderFormattedText(activeAssistantBubble, activeAssistantText || "分析中…");
+        chatList.scrollTop = chatList.scrollHeight;
+      }
+    });
   }
 
   function appendAssistantDelta(requestId, delta) {
     if (!activeAssistantBubble || requestId !== activeChatRequestId) {
       return false;
     }
-    if (activeAssistantBubble.textContent === "分析中…") {
-      activeAssistantBubble.textContent = "";
-    }
-    activeAssistantBubble.textContent += delta || "";
-    chatList.scrollTop = chatList.scrollHeight;
+    activeAssistantText += delta || "";
+    scheduleAssistantRender();
     return true;
   }
 
@@ -116,20 +193,34 @@
     if (!activeAssistantBubble || requestId !== activeChatRequestId) {
       return false;
     }
-    activeAssistantBubble.textContent = text || activeAssistantBubble.textContent || "分析完成";
+    activeAssistantText = text || activeAssistantText || "分析完成";
+    renderFormattedText(activeAssistantBubble, activeAssistantText);
     activeChatRequestId = null;
     activeAssistantBubble = null;
+    activeAssistantText = "";
     chatList.scrollTop = chatList.scrollHeight;
     return true;
   }
 
   function failAssistantMessage(message) {
     if (activeAssistantBubble) {
-      activeAssistantBubble.textContent = `错误：${message || "模型调用失败"}`;
+      renderFormattedText(activeAssistantBubble, `错误：${message || "模型调用失败"}`);
       activeChatRequestId = null;
       activeAssistantBubble = null;
+      activeAssistantText = "";
       chatList.scrollTop = chatList.scrollHeight;
     }
+  }
+
+  function isOutdatedAnswerEvent(event) {
+    const requestId = String(event.request_id || "");
+    if (requestId.startsWith("fullscreen-")) {
+      return requestId !== activeDirectRequestId;
+    }
+    if (requestId.startsWith("chat-")) {
+      return activeChatRequestId !== null && requestId !== activeChatRequestId;
+    }
+    return false;
   }
 
   function handleEvent(event) {
@@ -137,24 +228,36 @@
     if (event.type === "selection.status") {
       setSelectionStatus(payload.state, payload.message);
     } else if (event.type === "answer.started") {
+      if (isOutdatedAnswerEvent(event)) {
+        return;
+      }
       buffer = "";
       setSelectionStatus("analyzing", "AI 正在分析，请稍候");
       if (payload.chat) {
         startAssistantMessage(event.request_id);
-        outputEl.textContent = "聊天请求分析中…";
+        setOutput("聊天请求分析中…");
       } else {
-        outputEl.textContent = "分析中…";
+        setOutput("分析中…");
       }
     } else if (event.type === "answer.delta") {
+      if (isOutdatedAnswerEvent(event)) {
+        return;
+      }
       buffer += payload.delta || "";
       if (!appendAssistantDelta(event.request_id, payload.delta || "")) {
-        outputEl.textContent = buffer || "分析中…";
+        setOutput(buffer || "分析中…");
       }
     } else if (event.type === "answer.completed") {
+      if (isOutdatedAnswerEvent(event)) {
+        return;
+      }
       const result = payload.result || {};
       buffer = result.text || buffer || "分析完成";
       if (!completeAssistantMessage(event.request_id, buffer)) {
-        outputEl.textContent = buffer;
+        setOutput(buffer);
+      }
+      if (event.request_id === activeDirectRequestId) {
+        activeDirectRequestId = null;
       }
       setSelectionStatus("completed", "答案已生成，可以继续框选或全屏截题");
     } else if (event.type === "screenshot.captured") {
@@ -168,9 +271,15 @@
         setSelectionStatus("completed", `已添加截图 ${screenshots.length}/${maxScreenshots}，可继续截图或发送`);
       }
     } else if (event.type === "answer.error") {
+      if (isOutdatedAnswerEvent(event)) {
+        return;
+      }
       buffer = "";
       failAssistantMessage(payload.message);
-      outputEl.textContent = `错误：${payload.message || "模型调用失败"}`;
+      setOutput(`错误：${payload.message || "模型调用失败"}`);
+      if (event.request_id === activeDirectRequestId) {
+        activeDirectRequestId = null;
+      }
       setSelectionStatus("error", "分析失败，可以重新框选或全屏截题");
     }
   }
@@ -206,9 +315,15 @@
     if (!socket || socket.readyState !== WebSocket.OPEN) {
       return;
     }
+    activeDirectRequestId = nextRequestId("fullscreen");
+    buffer = "";
+    setOutput("分析中…");
     fullscreenButton.disabled = true;
     setSelectionStatus("capturing", "已请求电脑截取全屏");
-    socket.send(JSON.stringify({ type: "command.fullscreen" }));
+    socket.send(JSON.stringify({
+      type: "command.fullscreen",
+      payload: { client_request_id: activeDirectRequestId }
+    }));
     setTimeout(function () {
       if (socket && socket.readyState === WebSocket.OPEN) {
         fullscreenButton.disabled = false;
@@ -242,6 +357,10 @@
       return;
     }
     const images = screenshots.map(function (screenshot) { return screenshot.image; });
+    const requestId = nextRequestId("chat");
+    activeChatRequestId = requestId;
+    activeAssistantBubble = null;
+    activeAssistantText = "";
     appendMessage("user", text || "请根据截图作答", images.length);
     fullscreenButton.disabled = true;
     chatCaptureButton.disabled = true;
@@ -253,7 +372,8 @@
         text,
         images,
         conversation: true,
-        chat: true
+        chat: true,
+        client_request_id: requestId
       }
     }));
     questionInput.value = "";

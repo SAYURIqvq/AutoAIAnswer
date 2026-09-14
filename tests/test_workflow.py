@@ -51,6 +51,12 @@ class FakeAI:
             yield '"confidence":"0.91"}'
 
 
+class FailingAI:
+    def analyze_images_stream(self, png_images, user_text=None, conversation=None):
+        raise RuntimeError("provider rejected request")
+        yield ""
+
+
 class FakePublisher:
     def __init__(self):
         self.events = []
@@ -143,6 +149,22 @@ def test_workflow_fullscreen_streams_and_completes() -> None:
     assert publisher.events[2]["payload"] == {"mode": "fullscreen"}
 
 
+def test_workflow_fullscreen_uses_supplied_request_id() -> None:
+    publisher = FakePublisher()
+    workflow = AssistantWorkflow(
+        session_id="s1",
+        capture=FakeCapture(),
+        ai_client=FakeAI(),
+        publisher=publisher,
+        app_settings=replace(settings, save_debug_image=False),
+    )
+
+    workflow.process_fullscreen(120, 240, request_id="fullscreen-abc")
+
+    answer_events = [event for event in publisher.events if event["type"].startswith("answer.")]
+    assert {event["request_id"] for event in answer_events} == {"fullscreen-abc"}
+
+
 def test_workflow_fullscreen_question_uses_conversation_context() -> None:
     publisher = FakePublisher()
     capture = FakeCapture()
@@ -229,6 +251,35 @@ def test_mobile_multi_screenshot_submission_uses_all_images() -> None:
     }
 
 
+def test_mobile_image_only_chat_is_remembered() -> None:
+    publisher = FakePublisher()
+    ai_client = FakeAI()
+    workflow = AssistantWorkflow(
+        session_id="s1",
+        capture=FakeCapture(),
+        ai_client=ai_client,
+        publisher=publisher,
+        app_settings=replace(settings, save_debug_image=False),
+    )
+
+    workflow.process_mobile_images(
+        [b"one", b"two"],
+        use_conversation=True,
+        is_chat=True,
+        request_id="chat-images-only",
+    )
+
+    assert workflow.mobile_conversation[-2:] == [
+        {"role": "user", "content": "用户发送了 2 张截图"},
+        {
+            "role": "assistant",
+            "content": '{"answer":"A","reason":"multi image","confidence":"0.91"}',
+        },
+    ]
+    answer_events = [event for event in publisher.events if event["type"].startswith("answer.")]
+    assert {event["request_id"] for event in answer_events} == {"chat-images-only"}
+
+
 def test_mobile_text_only_chat_is_allowed() -> None:
     publisher = FakePublisher()
     ai_client = FakeAI()
@@ -256,3 +307,22 @@ def test_mobile_text_only_chat_is_allowed() -> None:
         "conversation_turns": 0,
         "chat": True,
     }
+
+
+def test_mobile_ai_error_is_published() -> None:
+    publisher = FakePublisher()
+    workflow = AssistantWorkflow(
+        session_id="s1",
+        capture=FakeCapture(),
+        ai_client=FailingAI(),
+        publisher=publisher,
+        app_settings=replace(settings, save_debug_image=False),
+    )
+
+    workflow.process_mobile_images([b"one"], is_chat=True, request_id="chat-error")
+
+    errors = [event for event in publisher.events if event["type"] == "answer.error"]
+    assert len(errors) == 1
+    assert errors[0]["session_id"] == "s1"
+    assert errors[0]["request_id"] == "chat-error"
+    assert errors[0]["payload"] == {"message": "provider rejected request"}
