@@ -130,9 +130,9 @@ h1 { margin: 0; font-size: 20px; }
   display: flex;
   flex-direction: column;
   gap: 10px;
-  height: 66vh;
-  min-height: 360px;
-  max-height: 66vh;
+  height: 54vh;
+  min-height: 300px;
+  max-height: 54vh;
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
@@ -267,12 +267,12 @@ h1 { margin: 0; font-size: 20px; }
 }
 
 .chat-actions {
-  display: grid;
-  grid-template-columns: minmax(112px, 0.38fr) minmax(0, 1fr);
+  display: flex;
   gap: 8px;
 }
 
 .capture-button.compact {
+  flex: 0 0 38%;
   background: #0d1728;
   color: var(--text);
 }
@@ -284,6 +284,7 @@ h1 { margin: 0; font-size: 20px; }
 }
 
 .capture-button.secondary {
+  flex: 1 1 auto;
   background: #d7fff5;
   color: #053024;
 }
@@ -299,9 +300,9 @@ h1 { margin: 0; font-size: 20px; }
 }
 
 .output {
-  height: 40vh;
-  min-height: 216px;
-  max-height: 40vh;
+  height: 20vh;
+  min-height: 128px;
+  max-height: 220px;
   margin: 0;
   padding: 14px;
   border: 1px solid var(--line);
@@ -319,14 +320,14 @@ h1 { margin: 0; font-size: 20px; }
 
 @media (max-height: 720px) {
   .chat-list {
-    height: 62vh;
-    min-height: 300px;
-    max-height: 62vh;
+    height: 48vh;
+    min-height: 240px;
+    max-height: 48vh;
   }
 
   .output {
-    height: 37vh;
-    min-height: 180px;
-    max-height: 37vh;
+    height: 18vh;
+    min-height: 112px;
+    max-height: 180px;
   }
 }

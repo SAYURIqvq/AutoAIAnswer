@@ -37,7 +37,7 @@ from ai_screenshot_assistant.resources import app_icon_path
 from ai_screenshot_assistant.ui.streaming_overlay import StreamingOverlay
 from ai_screenshot_assistant.websocket_client import DesktopWebSocketPublisher
 
-gAppName = str("QQ音乐")
+APP_DISPLAY_NAME = "AutoAIAnswer"
 
 class UiSignals(QObject):
     status = Signal(str)
@@ -49,13 +49,14 @@ class UiSignals(QObject):
     stream_completed = Signal(str)
     stream_error = Signal(str)
     mobile_fullscreen_requested = Signal(dict)
+    log = Signal(str)
 
 
 class MainWindow(QMainWindow):
     def __init__(self, backend_url: str | None = None) -> None:
         super().__init__()
         self.backend_url = backend_url or settings.backend_url
-        self.setWindowTitle(gAppName)
+        self.setWindowTitle(APP_DISPLAY_NAME)
         icon = self._app_icon()
         if not icon.isNull():
             self.setWindowIcon(icon)
@@ -84,6 +85,7 @@ class MainWindow(QMainWindow):
         self.signals.stream_delta.connect(self.overlay.append_delta)
         self.signals.stream_completed.connect(self.overlay.complete_stream)
         self.signals.stream_error.connect(self.overlay.show_error)
+        self.signals.log.connect(self._log)
 
         self.session: BackendSession | None = None
         self.publisher: DesktopWebSocketPublisher | None = None
@@ -179,7 +181,7 @@ class MainWindow(QMainWindow):
         menu.addAction(quit_action)
         self.tray_icon = QSystemTrayIcon(icon, self)
         self.tray_icon.setIcon(icon)
-        self.tray_icon.setToolTip(gAppName)
+        self.tray_icon.setToolTip(APP_DISPLAY_NAME)
         self.tray_icon.setContextMenu(menu)
         self.tray_icon.activated.connect(self._on_tray_activated)
         self.tray_icon.show()
@@ -307,6 +309,7 @@ class MainWindow(QMainWindow):
                 self.backend_url,
                 self.session.session_id,
                 self._handle_desktop_command,
+                self.signals.log.emit,
             )
             self.mobile_label.setText(f"手机端：{self.session.pair_url}")
             self._set_qr(self.session.pair_url)

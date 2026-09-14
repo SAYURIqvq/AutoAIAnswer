@@ -136,6 +136,12 @@
     const payload = event.payload || {};
     if (event.type === "selection.status") {
       setSelectionStatus(payload.state, payload.message);
+    } else if (event.type === "command.rejected") {
+      setSelectionStatus("error", payload.message || "电脑端命令通道未连接");
+      outputEl.textContent = payload.message || "电脑端命令通道未连接";
+      fullscreenButton.disabled = false;
+      chatCaptureButton.disabled = false;
+      updateAskButton();
     } else if (event.type === "answer.started") {
       buffer = "";
       setSelectionStatus("analyzing", "AI 正在分析，请稍候");

@@ -131,6 +131,15 @@ async def _handle_mobile_message(session: Any, message: str) -> None:
         await session.desktop_commands.send_json(
             _system_event(session.session_id, command_type, payload)
         )
+    else:
+        await _send_mobile(
+            session,
+            _system_event(
+                session.session_id,
+                "command.rejected",
+                {"message": "电脑端命令通道未连接，请完全退出并重新打开电脑端应用"},
+            ),
+        )
 
 
 def _mobile_command_payload(data: dict[str, Any]) -> dict[str, Any]:

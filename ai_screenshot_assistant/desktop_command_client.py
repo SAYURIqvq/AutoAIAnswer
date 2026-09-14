@@ -10,10 +10,17 @@ import websockets
 
 
 class DesktopCommandClient:
-    def __init__(self, backend_url: str, session_id: str, on_command: Callable[[dict[str, Any]], None]) -> None:
+    def __init__(
+        self,
+        backend_url: str,
+        session_id: str,
+        on_command: Callable[[dict[str, Any]], None],
+        on_status: Callable[[str], None] | None = None,
+    ) -> None:
         ws_base = backend_url.rstrip("/").replace("https://", "wss://").replace("http://", "ws://")
         self.url = f"{ws_base}/ws/desktop-commands/{session_id}"
         self.on_command = on_command
+        self.on_status = on_status
         self._closed = False
         self._thread = threading.Thread(target=self._thread_main, daemon=True, name="desktop-command-listener")
         self._thread.start()
@@ -25,16 +32,22 @@ class DesktopCommandClient:
         while not self._closed:
             try:
                 async with websockets.connect(self.url, proxy=None) as websocket:
+                    self._notify_status("手机命令通道已连接")
                     async for message in websocket:
                         try:
                             data = json.loads(message)
                         except json.JSONDecodeError:
                             continue
                         self.on_command(data)
-            except Exception:
+            except Exception as exc:
                 if not self._closed:
+                    self._notify_status(f"手机命令通道连接失败：{exc}")
                     await asyncio.sleep(1)
 
     def close(self) -> None:
         self._closed = True
         self._thread.join(timeout=3)
+
+    def _notify_status(self, message: str) -> None:
+        if self.on_status is not None:
+            self.on_status(message)
