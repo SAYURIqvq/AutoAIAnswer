@@ -2,6 +2,15 @@
 
 Windows / macOS 截图搜题助手。通过全局鼠标手势框选屏幕题目，调用视觉模型分析，并把答案实时流式发送到同一局域网内的手机浏览器；也可选择在桌面显示轻量透明悬浮答案。
 
+## 平台代码（已分开）
+
+| 平台 | GitHub 分支 | 独立工程目录 | 捕获排除方式 |
+|---|---|---|---|
+| Windows | [`win`](https://github.com/SAYURIqvq/AutoAIAnswer/tree/win) | [`windows/`](windows/) | `WDA_EXCLUDEFROMCAPTURE` |
+| macOS | [`mac`](https://github.com/SAYURIqvq/AutoAIAnswer/tree/mac) | [`macos/`](macos/) | `NSWindow.sharingType = .none` |
+
+Mac 上打包只需要 `macos/` 目录：拷到 Mac 后执行 `./build.sh`。Windows 打包只需要 `windows/` 目录：执行 `build.bat`。
+
 ## 直接下载
 
 [下载 Windows 版 AutoAIAnswer-Windows.zip](https://github.com/SAYURIqvq/AutoAIAnswer/releases/latest/download/AutoAIAnswer-Windows.zip)

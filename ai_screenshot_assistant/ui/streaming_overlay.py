@@ -1,16 +1,20 @@
 from __future__ import annotations
 
+import sys
+
 from PySide6.QtCore import QPoint, QSettings, QTimer, Qt
 from PySide6.QtGui import QColor, QMouseEvent, QPalette, QShowEvent
 from PySide6.QtWidgets import QApplication, QGraphicsDropShadowEffect, QLabel, QVBoxLayout, QWidget
 
-from ai_screenshot_assistant.ui.win32_capture import (
+from ai_screenshot_assistant.ui.native_capture import (
     CHROMA_KEY_RGB,
     apply_capture_exclusion,
     hwnd_from_widget,
     set_color_key_opacity,
     set_no_activate,
 )
+
+_IS_MAC = sys.platform == "darwin"
 
 
 class StreamingOverlay(QWidget):
@@ -24,6 +28,9 @@ class StreamingOverlay(QWidget):
         self._opacity_percent = int(app_settings.value("overlay/opacity_percent", 50) or 50)
         self._font_px = int(app_settings.value("overlay/font_px", 18) or 18)
         self._font_px = max(8, min(22, self._font_px))
+        self._native_retry = QTimer(self)
+        self._native_retry.setSingleShot(True)
+        self._native_retry.timeout.connect(self._apply_native_flags)
         self.setWindowTitle("AI 流式答案")
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
@@ -34,24 +41,31 @@ class StreamingOverlay(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
         self.setMinimumWidth(160)
         self.setMaximumWidth(720)
-        key = QColor(*CHROMA_KEY_RGB)
-        self.setAutoFillBackground(True)
-        palette = self.palette()
-        palette.setColor(QPalette.ColorRole.Window, key)
-        self.setPalette(palette)
-        self.setStyleSheet(
-            f"StreamingOverlay {{ background-color: rgb{CHROMA_KEY_RGB}; border: none; }}"
-        )
+        if _IS_MAC:
+            self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+            self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
+            self.setAutoFillBackground(False)
+            self.setStyleSheet("StreamingOverlay { background: transparent; border: none; }")
+        else:
+            key = QColor(*CHROMA_KEY_RGB)
+            self.setAutoFillBackground(True)
+            palette = self.palette()
+            palette.setColor(QPalette.ColorRole.Window, key)
+            self.setPalette(palette)
+            self.setStyleSheet(
+                f"StreamingOverlay {{ background-color: rgb{CHROMA_KEY_RGB}; border: none; }}"
+            )
 
         self.label = QLabel("")
         self.label.setWordWrap(True)
         self.label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self._apply_label_style()
-        shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(6)
-        shadow.setOffset(0, 1)
-        shadow.setColor(QColor(0, 0, 0, 180))
-        self.label.setGraphicsEffect(shadow)
+        if not _IS_MAC:
+            shadow = QGraphicsDropShadowEffect(self)
+            shadow.setBlurRadius(6)
+            shadow.setOffset(0, 1)
+            shadow.setColor(QColor(0, 0, 0, 180))
+            self.label.setGraphicsEffect(shadow)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
@@ -106,9 +120,20 @@ class StreamingOverlay(QWidget):
 
     def showEvent(self, event: QShowEvent) -> None:
         super().showEvent(event)
-        QTimer.singleShot(0, self._apply_native_flags)
+        self._schedule_native_flags()
+
+    def raise_(self) -> None:
+        super().raise_()
+        self._schedule_native_flags()
+
+    def _schedule_native_flags(self) -> None:
+        self._apply_native_flags()
+        # AppKit may reset sharingType during orderFront; pin it again shortly after.
+        self._native_retry.start(120)
 
     def _apply_native_flags(self) -> None:
+        if _IS_MAC:
+            self.setWindowOpacity(self._opacity_percent / 100.0)
         hwnd = hwnd_from_widget(self)
         if not hwnd:
             return
