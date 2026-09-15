@@ -6,7 +6,7 @@ import sys
 import threading
 from typing import Any
 
-from PySide6.QtCore import QObject, QSettings, QTimer, Signal
+from PySide6.QtCore import QObject, QSettings, Qt, QTimer, Signal
 from PySide6.QtGui import QAction, QCloseEvent, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QMenu,
     QMessageBox,
     QPushButton,
+    QSlider,
     QStyle,
     QSystemTrayIcon,
     QTextEdit,
@@ -80,7 +81,7 @@ class MainWindow(QMainWindow):
         self.signals.provider_changed.connect(self._on_provider_failover)
 
         self.overlay = StreamingOverlay(self.app_settings)
-        self.signals.stream_started.connect(self.overlay.start_stream)
+        self.signals.stream_started.connect(self._on_stream_started)
         self.signals.stream_delta.connect(self.overlay.append_delta)
         self.signals.stream_completed.connect(self.overlay.complete_stream)
         self.signals.stream_error.connect(self.overlay.show_error)
@@ -109,8 +110,24 @@ class MainWindow(QMainWindow):
         self.save_providers_button.clicked.connect(self.save_provider_settings)
         self.save_status = QLabel("")
         self.overlay_toggle = QCheckBox("显示桌面流式悬浮答案")
-        self.overlay_toggle.setChecked(False)
         self.overlay_toggle.toggled.connect(self.set_overlay_visible)
+        overlay_visible = self._settings_bool("overlay/visible", True)
+        opacity_percent = int(self.app_settings.value("overlay/opacity_percent", 50) or 50)
+        opacity_percent = max(15, min(100, opacity_percent))
+        self.opacity_label = QLabel(f"字幕透明度：{opacity_percent}%")
+        self.opacity_slider = QSlider(Qt.Orientation.Horizontal)
+        self.opacity_slider.setRange(15, 100)
+        self.opacity_slider.setValue(opacity_percent)
+        self.opacity_slider.valueChanged.connect(self._on_overlay_opacity)
+        self.overlay.set_opacity_percent(opacity_percent)
+        font_px = int(self.app_settings.value("overlay/font_px", 18) or 18)
+        font_px = max(8, min(22, font_px))
+        self.font_label = QLabel(f"字幕字号：{font_px}px")
+        self.font_slider = QSlider(Qt.Orientation.Horizontal)
+        self.font_slider.setRange(8, 22)
+        self.font_slider.setValue(font_px)
+        self.font_slider.valueChanged.connect(self._on_overlay_font)
+        self.overlay.set_font_px(font_px)
         self.region_gesture_toggle = QCheckBox("开启左键长按 2 秒框选手势")
         self.region_gesture_toggle.setChecked(self.region_gesture_enabled)
         self.region_gesture_toggle.toggled.connect(self.set_region_gesture_enabled)
@@ -140,6 +157,14 @@ class MainWindow(QMainWindow):
         layout.addLayout(provider_form)
         layout.addLayout(save_row)
         layout.addWidget(self.overlay_toggle)
+        opacity_row = QHBoxLayout()
+        opacity_row.addWidget(self.opacity_label)
+        opacity_row.addWidget(self.opacity_slider, 1)
+        layout.addLayout(opacity_row)
+        font_row = QHBoxLayout()
+        font_row.addWidget(self.font_label)
+        font_row.addWidget(self.font_slider, 1)
+        layout.addLayout(font_row)
         layout.addWidget(self.region_gesture_toggle)
         layout.addWidget(self.fullscreen_gesture_toggle)
         layout.addWidget(self.fullscreen_button)
@@ -156,6 +181,7 @@ class MainWindow(QMainWindow):
         self.signals.mobile_fullscreen_requested.connect(self._capture_current_screen_from_mobile)
         self._setup_tray_icon()
         self._setup_workflow()
+        self.overlay_toggle.setChecked(overlay_visible)
         QTimer.singleShot(600, self._maybe_prompt_macos_permissions)
 
     def _setup_tray_icon(self) -> None:
@@ -281,11 +307,28 @@ class MainWindow(QMainWindow):
             self._log("DeepSeek 额度不足，已切换 OpenRouter")
 
     def set_overlay_visible(self, visible: bool) -> None:
+        self.app_settings.setValue("overlay/visible", visible)
         if visible:
             self.overlay.show()
             self.overlay.raise_()
         else:
             self.overlay.hide()
+
+    def _on_overlay_opacity(self, percent: int) -> None:
+        self.opacity_label.setText(f"字幕透明度：{percent}%")
+        self.app_settings.setValue("overlay/opacity_percent", percent)
+        self.overlay.set_opacity_percent(percent)
+
+    def _on_overlay_font(self, size: int) -> None:
+        self.font_label.setText(f"字幕字号：{size}px")
+        self.app_settings.setValue("overlay/font_px", max(8, min(22, size)))
+        self.overlay.set_font_px(size)
+
+    def _on_stream_started(self) -> None:
+        if self.overlay_toggle.isChecked():
+            self.overlay.show()
+            self.overlay.raise_()
+        self.overlay.start_stream()
 
     def set_region_gesture_enabled(self, enabled: bool) -> None:
         self.region_gesture_enabled = enabled
