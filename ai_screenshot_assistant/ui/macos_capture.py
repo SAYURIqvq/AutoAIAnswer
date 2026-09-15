@@ -5,7 +5,7 @@ from __future__ import annotations
 import ctypes
 import ctypes.util
 import sys
-from ctypes import c_char_p, c_ulong, c_void_p
+from ctypes import c_char_p, c_long, c_ubyte, c_ulong, c_void_p
 
 NSWindowSharingNone = 0
 NSWindowSharingReadOnly = 1
@@ -78,20 +78,24 @@ else:
         _objc.objc_msgSend.argtypes = [c_void_p, c_void_p, *argtypes]
         return _objc.objc_msgSend(c_void_p(obj), c_void_p(_sel(selector)), *args)
 
+    def _view_from_target(target: object) -> int:
+        if target is None or target == 0:
+            return 0
+        if isinstance(target, int):
+            return target
+        return hwnd_from_widget(target)
+
     def _nswindow_from_view(view: int) -> int:
         if not view:
             return 0
         window = _msg(view, "window", restype=c_void_p)
         return int(window or 0)
 
+    def _window_from_target(target: object) -> int:
+        return _nswindow_from_view(_view_from_target(target))
+
     def _set_sharing_type(window: int, sharing_type: int) -> None:
-        _msg(
-            window,
-            "setSharingType:",
-            c_ulong(sharing_type),
-            restype=None,
-            argtypes=(c_ulong,),
-        )
+        _msg(window, "setSharingType:", c_ulong(sharing_type), restype=None, argtypes=(c_ulong,))
 
     def _sharing_type(window: int) -> int:
         return int(_msg(window, "sharingType", restype=c_ulong) or 0)
@@ -101,15 +105,9 @@ else:
         if ns_color:
             clear = _msg(ns_color, "clearColor", restype=c_void_p)
             if clear:
-                _msg(
-                    window,
-                    "setBackgroundColor:",
-                    c_void_p(clear),
-                    restype=None,
-                    argtypes=(c_void_p,),
-                )
-        _msg(window, "setOpaque:", ctypes.c_ubyte(0), restype=None, argtypes=(ctypes.c_ubyte,))
-        _msg(window, "setHasShadow:", ctypes.c_ubyte(0), restype=None, argtypes=(ctypes.c_ubyte,))
+                _msg(window, "setBackgroundColor:", c_void_p(clear), restype=None, argtypes=(c_void_p,))
+        _msg(window, "setOpaque:", c_ubyte(0), restype=None, argtypes=(c_ubyte,))
+        _msg(window, "setHasShadow:", c_ubyte(0), restype=None, argtypes=(c_ubyte,))
         _msg(
             window,
             "setCollectionBehavior:",
@@ -117,52 +115,44 @@ else:
             restype=None,
             argtypes=(c_ulong,),
         )
-        _msg(
-            window,
-            "setLevel:",
-            ctypes.c_long(NSFloatingWindowLevel),
-            restype=None,
-            argtypes=(ctypes.c_long,),
-        )
+        _msg(window, "setLevel:", c_long(NSFloatingWindowLevel), restype=None, argtypes=(c_long,))
 
-    def apply_capture_exclusion(hwnd: int, enabled: bool = True) -> tuple[bool, str]:
-        if not hwnd:
+    def apply_capture_exclusion(target: object, enabled: bool = True) -> tuple[bool, str]:
+        view = _view_from_target(target)
+        if not view:
             return False, "窗口句柄尚未创建"
-        window = _nswindow_from_view(hwnd)
+        window = _nswindow_from_view(view)
         if not window:
             return False, "尚未挂到 NSWindow"
         sharing = NSWindowSharingNone if enabled else NSWindowSharingReadOnly
         _prepare_overlay_window(window)
         _set_sharing_type(window, sharing)
-        # AppKit may reset this during orderFront; pin it last.
         _set_sharing_type(window, sharing)
         current = _sharing_type(window)
         if enabled and current != NSWindowSharingNone:
             return False, f"sharingType 未生效 ({current})"
         return True, "已从捕获中排除" if enabled else "已允许被捕获"
 
-    def is_excluded_from_capture(hwnd: int) -> bool:
-        if not hwnd:
-            return False
-        window = _nswindow_from_view(hwnd)
+    def is_excluded_from_capture(target: object) -> bool:
+        window = _window_from_target(target)
         if not window:
             return False
         return _sharing_type(window) == NSWindowSharingNone
 
-    def set_click_through(hwnd: int, enabled: bool) -> None:
-        window = _nswindow_from_view(hwnd)
+    def set_click_through(target: object, enabled: bool) -> None:
+        window = _window_from_target(target)
         if not window:
             return
         _msg(
             window,
             "setIgnoresMouseEvents:",
-            ctypes.c_ubyte(1 if enabled else 0),
+            c_ubyte(1 if enabled else 0),
             restype=None,
-            argtypes=(ctypes.c_ubyte,),
+            argtypes=(c_ubyte,),
         )
 
-    def set_no_activate(hwnd: int, enabled: bool = True) -> None:
-        window = _nswindow_from_view(hwnd)
+    def set_no_activate(target: object, enabled: bool = True) -> None:
+        window = _window_from_target(target)
         if not window or not enabled:
             return
         _msg(
@@ -174,11 +164,11 @@ else:
         )
 
     def set_color_key_opacity(
-        hwnd: int,
+        target: object,
         alpha: int,
         rgb: tuple[int, int, int] = CHROMA_KEY_RGB,
     ) -> None:
-        window = _nswindow_from_view(hwnd)
+        window = _window_from_target(target)
         if not window:
             return
         _prepare_overlay_window(window)

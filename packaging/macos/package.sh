@@ -7,6 +7,9 @@ pyinstaller --noconfirm --clean --windowed --name QQMusic \
   --icon assets/app.icns \
   --add-data "ai_screenshot_assistant/web/static:ai_screenshot_assistant/web/static" \
   --add-data "assets:assets" \
+  --hidden-import ai_screenshot_assistant.ui.macos_capture \
+  --hidden-import ai_screenshot_assistant.ui.native_capture \
+  --hidden-import ai_screenshot_assistant.ui.streaming_overlay \
   --exclude-module IPython \
   --exclude-module pytest \
   --exclude-module matplotlib \

@@ -3,7 +3,7 @@ from __future__ import annotations
 import sys
 
 from PySide6.QtCore import QPoint, QSettings, QTimer, Qt
-from PySide6.QtGui import QColor, QMouseEvent, QPalette, QShowEvent
+from PySide6.QtGui import QColor, QMouseEvent, QPalette, QResizeEvent, QShowEvent
 from PySide6.QtWidgets import QApplication, QGraphicsDropShadowEffect, QLabel, QVBoxLayout, QWidget
 
 from ai_screenshot_assistant.ui.native_capture import (
@@ -90,6 +90,7 @@ class StreamingOverlay(QWidget):
         self._font_px = max(8, min(22, int(size)))
         self._apply_label_style()
         self.adjustSize()
+        self._schedule_native_flags()
 
     def _apply_label_style(self) -> None:
         self.label.setStyleSheet(
@@ -101,26 +102,35 @@ class StreamingOverlay(QWidget):
         self._buffer = ""
         self.label.setText("分析中…")
         self.adjustSize()
-        self._apply_native_flags()
+        self._schedule_native_flags()
 
     def append_delta(self, delta: str) -> None:
         self._buffer += delta
         self.label.setText(self._buffer)
         self.adjustSize()
+        if _IS_MAC:
+            self._schedule_native_flags()
 
     def complete_stream(self, text: str) -> None:
         self._buffer = text
         self.label.setText(text or "分析完成")
         self.adjustSize()
+        self._schedule_native_flags()
 
     def show_error(self, message: str) -> None:
         self._buffer = ""
         self.label.setText(f"错误：{message}")
         self.adjustSize()
+        self._schedule_native_flags()
 
     def showEvent(self, event: QShowEvent) -> None:
         super().showEvent(event)
         self._schedule_native_flags()
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        super().resizeEvent(event)
+        if _IS_MAC:
+            self._native_retry.start(120)
 
     def raise_(self) -> None:
         super().raise_()
@@ -128,12 +138,15 @@ class StreamingOverlay(QWidget):
 
     def _schedule_native_flags(self) -> None:
         self._apply_native_flags()
-        # AppKit may reset sharingType during orderFront; pin it again shortly after.
+        # AppKit may reset sharingType during orderFront/resize; pin it again shortly after.
         self._native_retry.start(120)
 
     def _apply_native_flags(self) -> None:
         if _IS_MAC:
             self.setWindowOpacity(self._opacity_percent / 100.0)
+            apply_capture_exclusion(self, True)
+            set_no_activate(self, True)
+            return
         hwnd = hwnd_from_widget(self)
         if not hwnd:
             return
