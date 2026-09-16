@@ -23,6 +23,7 @@ OVERLAY_COLLECTION_BEHAVIOR = (
 )
 
 NSFloatingWindowLevel = 3
+NSStatusWindowLevel = 25
 CHROMA_KEY_RGB = (1, 2, 3)
 
 
@@ -51,6 +52,9 @@ if sys.platform != "darwin":
         return False
 
     def set_click_through(hwnd: int, enabled: bool) -> None:
+        return
+
+    def keep_overlay_fronted(target: object) -> None:
         return
 
     def set_no_activate(hwnd: int, enabled: bool = True) -> None:
@@ -115,7 +119,9 @@ else:
             restype=None,
             argtypes=(c_ulong,),
         )
-        _msg(window, "setLevel:", c_long(NSFloatingWindowLevel), restype=None, argtypes=(c_long,))
+        _msg(window, "setHidesOnDeactivate:", c_ubyte(0), restype=None, argtypes=(c_ubyte,))
+        _msg(window, "setLevel:", c_long(NSStatusWindowLevel), restype=None, argtypes=(c_long,))
+        _msg(window, "orderFrontRegardless", restype=None)
 
     def apply_capture_exclusion(target: object, enabled: bool = True) -> tuple[bool, str]:
         view = _view_from_target(target)
@@ -138,6 +144,14 @@ else:
         if not window:
             return False
         return _sharing_type(window) == NSWindowSharingNone
+
+    def keep_overlay_fronted(target: object) -> None:
+        window = _window_from_target(target)
+        if not window:
+            return
+        _msg(window, "setHidesOnDeactivate:", c_ubyte(0), restype=None, argtypes=(c_ubyte,))
+        _msg(window, "setLevel:", c_long(NSStatusWindowLevel), restype=None, argtypes=(c_long,))
+        _msg(window, "orderFrontRegardless", restype=None)
 
     def set_click_through(target: object, enabled: bool) -> None:
         window = _window_from_target(target)
@@ -162,6 +176,8 @@ else:
             restype=None,
             argtypes=(c_ulong,),
         )
+        _msg(window, "setHidesOnDeactivate:", c_ubyte(0), restype=None, argtypes=(c_ubyte,))
+        keep_overlay_fronted(target)
 
     def set_color_key_opacity(
         target: object,
