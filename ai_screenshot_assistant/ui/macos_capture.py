@@ -22,8 +22,9 @@ OVERLAY_COLLECTION_BEHAVIOR = (
     | NSWindowCollectionBehaviorFullScreenAuxiliary
 )
 
+NSNormalWindowLevel = 0
 NSFloatingWindowLevel = 3
-NSStatusWindowLevel = 25
+NSWindowStyleMaskNonactivatingPanel = 1 << 7
 CHROMA_KEY_RGB = (1, 2, 3)
 
 
@@ -98,13 +99,41 @@ else:
     def _window_from_target(target: object) -> int:
         return _nswindow_from_view(_view_from_target(target))
 
+    def _main_nswindows() -> set[int]:
+        from PySide6.QtWidgets import QApplication, QMainWindow
+
+        windows: set[int] = set()
+        app = QApplication.instance()
+        if app is None:
+            return windows
+        for widget in app.topLevelWidgets():
+            if isinstance(widget, QMainWindow):
+                handle = _window_from_target(widget)
+                if handle:
+                    windows.add(handle)
+        return windows
+
+    def _is_main_nswindow(window: int) -> bool:
+        return bool(window) and window in _main_nswindows()
+
+    def _reset_main_windows(except_window: int = 0) -> None:
+        for window in _main_nswindows():
+            if except_window and window == except_window:
+                continue
+            _msg(window, "setLevel:", c_long(NSNormalWindowLevel), restype=None, argtypes=(c_long,))
+            _msg(window, "setHidesOnDeactivate:", c_ubyte(1), restype=None, argtypes=(c_ubyte,))
+
     def _set_sharing_type(window: int, sharing_type: int) -> None:
         _msg(window, "setSharingType:", c_ulong(sharing_type), restype=None, argtypes=(c_ulong,))
 
     def _sharing_type(window: int) -> int:
         return int(_msg(window, "sharingType", restype=c_ulong) or 0)
 
-    def _prepare_overlay_window(window: int) -> None:
+    def _configure_overlay_window(window: int) -> bool:
+        if not window or _is_main_nswindow(window):
+            _reset_main_windows()
+            return False
+        _reset_main_windows(except_window=window)
         ns_color = int(_objc.objc_getClass(b"NSColor") or 0)
         if ns_color:
             clear = _msg(ns_color, "clearColor", restype=c_void_p)
@@ -119,9 +148,21 @@ else:
             restype=None,
             argtypes=(c_ulong,),
         )
+        style = int(_msg(window, "styleMask", restype=c_ulong) or 0)
+        _msg(
+            window,
+            "setStyleMask:",
+            c_ulong(style | NSWindowStyleMaskNonactivatingPanel),
+            restype=None,
+            argtypes=(c_ulong,),
+        )
+        ns_panel = int(_objc.objc_getClass(b"NSPanel") or 0)
+        if ns_panel and _msg(window, "isKindOfClass:", c_void_p(ns_panel), restype=c_ubyte, argtypes=(c_void_p,)):
+            _msg(window, "setFloatingPanel:", c_ubyte(1), restype=None, argtypes=(c_ubyte,))
+            _msg(window, "setBecomesKeyOnlyIfNeeded:", c_ubyte(1), restype=None, argtypes=(c_ubyte,))
         _msg(window, "setHidesOnDeactivate:", c_ubyte(0), restype=None, argtypes=(c_ubyte,))
-        _msg(window, "setLevel:", c_long(NSStatusWindowLevel), restype=None, argtypes=(c_long,))
-        _msg(window, "orderFrontRegardless", restype=None)
+        _msg(window, "setLevel:", c_long(NSFloatingWindowLevel), restype=None, argtypes=(c_long,))
+        return True
 
     def apply_capture_exclusion(target: object, enabled: bool = True) -> tuple[bool, str]:
         view = _view_from_target(target)
@@ -130,8 +171,9 @@ else:
         window = _nswindow_from_view(view)
         if not window:
             return False, "尚未挂到 NSWindow"
+        if not _configure_overlay_window(window):
+            return False, "拒绝修改主窗口"
         sharing = NSWindowSharingNone if enabled else NSWindowSharingReadOnly
-        _prepare_overlay_window(window)
         _set_sharing_type(window, sharing)
         _set_sharing_type(window, sharing)
         current = _sharing_type(window)
@@ -141,21 +183,19 @@ else:
 
     def is_excluded_from_capture(target: object) -> bool:
         window = _window_from_target(target)
-        if not window:
+        if not window or _is_main_nswindow(window):
             return False
         return _sharing_type(window) == NSWindowSharingNone
 
     def keep_overlay_fronted(target: object) -> None:
         window = _window_from_target(target)
-        if not window:
+        if not _configure_overlay_window(window):
             return
-        _msg(window, "setHidesOnDeactivate:", c_ubyte(0), restype=None, argtypes=(c_ubyte,))
-        _msg(window, "setLevel:", c_long(NSStatusWindowLevel), restype=None, argtypes=(c_long,))
         _msg(window, "orderFrontRegardless", restype=None)
 
     def set_click_through(target: object, enabled: bool) -> None:
         window = _window_from_target(target)
-        if not window:
+        if not window or _is_main_nswindow(window):
             return
         _msg(
             window,
@@ -167,17 +207,10 @@ else:
 
     def set_no_activate(target: object, enabled: bool = True) -> None:
         window = _window_from_target(target)
-        if not window or not enabled:
+        if not window or not enabled or _is_main_nswindow(window):
+            _reset_main_windows()
             return
-        _msg(
-            window,
-            "setCollectionBehavior:",
-            c_ulong(OVERLAY_COLLECTION_BEHAVIOR),
-            restype=None,
-            argtypes=(c_ulong,),
-        )
-        _msg(window, "setHidesOnDeactivate:", c_ubyte(0), restype=None, argtypes=(c_ubyte,))
-        keep_overlay_fronted(target)
+        _configure_overlay_window(window)
 
     def set_color_key_opacity(
         target: object,
@@ -185,8 +218,8 @@ else:
         rgb: tuple[int, int, int] = CHROMA_KEY_RGB,
     ) -> None:
         window = _window_from_target(target)
-        if not window:
+        if not window or _is_main_nswindow(window):
             return
-        _prepare_overlay_window(window)
+        _configure_overlay_window(window)
         _ = alpha
         _ = rgb

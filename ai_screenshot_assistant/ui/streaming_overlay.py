@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import sys
 
-from PySide6.QtCore import QEvent, QPoint, QSettings, QTimer, Qt
-from PySide6.QtGui import QColor, QHideEvent, QMouseEvent, QPalette, QResizeEvent, QShowEvent
+from PySide6.QtCore import QPoint, QSettings, QTimer, Qt
+from PySide6.QtGui import QColor, QMouseEvent, QPalette, QResizeEvent, QShowEvent
 from PySide6.QtWidgets import QApplication, QGraphicsDropShadowEffect, QLabel, QVBoxLayout, QWidget
 
 from ai_screenshot_assistant.ui.native_capture import (
@@ -33,7 +33,6 @@ class StreamingOverlay(QWidget):
         self._native_retry.setSingleShot(True)
         self._native_retry.timeout.connect(self._apply_native_flags)
         self._keep_alive = False
-        self._restoring = False
         self.setWindowTitle("AI 流式答案")
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
@@ -147,39 +146,10 @@ class StreamingOverlay(QWidget):
         super().showEvent(event)
         self._schedule_native_flags()
 
-    def hideEvent(self, event: QHideEvent) -> None:
-        super().hideEvent(event)
-        if _IS_MAC and self._keep_alive:
-            QTimer.singleShot(0, self._restore_if_needed)
-
-    def changeEvent(self, event: QEvent) -> None:
-        super().changeEvent(event)
-        if _IS_MAC and self._keep_alive and event.type() in (
-            QEvent.Type.ActivationChange,
-            QEvent.Type.WindowStateChange,
-            QEvent.Type.ApplicationDeactivate,
-            QEvent.Type.ApplicationActivate,
-        ):
-            self._restore_if_needed()
-
     def _on_app_state_changed(self, _state) -> None:
+        # Only re-order the lyric window itself. Qt raise()/show() would bring the main console too.
         if _IS_MAC and self._keep_alive:
-            self._restore_if_needed()
-
-    def _restore_if_needed(self) -> None:
-        if not self._keep_alive or self._restoring:
-            return
-        self._restoring = True
-        try:
-            if not self.isVisible():
-                super().show()
-            super().raise_()
-            self._schedule_native_flags()
-        finally:
-            QTimer.singleShot(80, self._clear_restoring)
-
-    def _clear_restoring(self) -> None:
-        self._restoring = False
+            keep_overlay_fronted(self)
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
