@@ -24,8 +24,38 @@ OVERLAY_COLLECTION_BEHAVIOR = (
 
 NSNormalWindowLevel = 0
 NSFloatingWindowLevel = 3
+NSStatusWindowLevel = 25  # status/menu level; never apply this to the overlay or main console
 NSWindowStyleMaskNonactivatingPanel = 1 << 7
 CHROMA_KEY_RGB = (1, 2, 3)
+OVERLAY_WINDOW_LEVEL = NSFloatingWindowLevel
+MAIN_WINDOW_LEVEL = NSNormalWindowLevel
+
+
+def overlay_target_is_safe(window_id: int, main_window_ids: set[int] | None = None) -> bool:
+    """True only for a real overlay NSWindow that is not the QMainWindow."""
+    if not window_id:
+        return False
+    return window_id not in set(main_window_ids or ())
+
+
+def overlay_window_level() -> int:
+    return OVERLAY_WINDOW_LEVEL
+
+
+def main_window_level() -> int:
+    return MAIN_WINDOW_LEVEL
+
+
+def collect_main_window_ids(widgets, resolve_window) -> set[int]:
+    from PySide6.QtWidgets import QMainWindow
+
+    ids: set[int] = set()
+    for widget in widgets:
+        if isinstance(widget, QMainWindow):
+            handle = int(resolve_window(widget) or 0)
+            if handle:
+                ids.add(handle)
+    return ids
 
 
 def hwnd_from_widget(widget: object) -> int:
@@ -100,18 +130,12 @@ else:
         return _nswindow_from_view(_view_from_target(target))
 
     def _main_nswindows() -> set[int]:
-        from PySide6.QtWidgets import QApplication, QMainWindow
+        from PySide6.QtWidgets import QApplication
 
-        windows: set[int] = set()
         app = QApplication.instance()
         if app is None:
-            return windows
-        for widget in app.topLevelWidgets():
-            if isinstance(widget, QMainWindow):
-                handle = _window_from_target(widget)
-                if handle:
-                    windows.add(handle)
-        return windows
+            return set()
+        return collect_main_window_ids(app.topLevelWidgets(), _window_from_target)
 
     def _is_main_nswindow(window: int) -> bool:
         return bool(window) and window in _main_nswindows()
@@ -120,7 +144,7 @@ else:
         for window in _main_nswindows():
             if except_window and window == except_window:
                 continue
-            _msg(window, "setLevel:", c_long(NSNormalWindowLevel), restype=None, argtypes=(c_long,))
+            _msg(window, "setLevel:", c_long(main_window_level()), restype=None, argtypes=(c_long,))
             _msg(window, "setHidesOnDeactivate:", c_ubyte(1), restype=None, argtypes=(c_ubyte,))
 
     def _set_sharing_type(window: int, sharing_type: int) -> None:
@@ -130,7 +154,7 @@ else:
         return int(_msg(window, "sharingType", restype=c_ulong) or 0)
 
     def _configure_overlay_window(window: int) -> bool:
-        if not window or _is_main_nswindow(window):
+        if not overlay_target_is_safe(window, _main_nswindows()):
             _reset_main_windows()
             return False
         _reset_main_windows(except_window=window)
@@ -161,7 +185,7 @@ else:
             _msg(window, "setFloatingPanel:", c_ubyte(1), restype=None, argtypes=(c_ubyte,))
             _msg(window, "setBecomesKeyOnlyIfNeeded:", c_ubyte(1), restype=None, argtypes=(c_ubyte,))
         _msg(window, "setHidesOnDeactivate:", c_ubyte(0), restype=None, argtypes=(c_ubyte,))
-        _msg(window, "setLevel:", c_long(NSFloatingWindowLevel), restype=None, argtypes=(c_long,))
+        _msg(window, "setLevel:", c_long(overlay_window_level()), restype=None, argtypes=(c_long,))
         return True
 
     def apply_capture_exclusion(target: object, enabled: bool = True) -> tuple[bool, str]:
