@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFormLayout,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -20,6 +21,7 @@ from PySide6.QtWidgets import (
     QMenu,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QSizePolicy,
     QSlider,
     QStyle,
@@ -67,7 +69,7 @@ class MainWindow(QMainWindow):
         icon = self._app_icon()
         if not icon.isNull():
             self.setWindowIcon(icon)
-        self.setMinimumSize(560, 720)
+        self.setMinimumSize(560, 640)
         self.app_settings = QSettings("AI Screenshot Assistant", "Desktop")
 
         legacy_key = str(self.app_settings.value("api/key", "") or "")
@@ -155,10 +157,14 @@ class MainWindow(QMainWindow):
         self.qr_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.qr_label.setScaledContents(False)
         self.qr_label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-        self.qr_label.setMinimumSize(QR_DISPLAY_PX, QR_DISPLAY_PX)
-        self.qr_label.setStyleSheet("QLabel { background: #ffffff; padding: 12px; border-radius: 8px; }")
+        self.qr_label.setContentsMargins(12, 12, 12, 12)
+        self.qr_label.setFixedSize(QR_DISPLAY_PX + 24, QR_DISPLAY_PX + 24)
+        self.qr_label.setStyleSheet("QLabel { background: #ffffff; border-radius: 8px; }")
         self.logs = QTextEdit()
         self.logs.setReadOnly(True)
+        self.logs.setMinimumHeight(72)
+        self.logs.setMaximumHeight(140)
+        self.logs.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.logs.document().setMaximumBlockCount(80)
         self.clear_chat_button = QPushButton("清空对话记录")
         self.clear_chat_button.clicked.connect(self._clear_conversation)
@@ -190,16 +196,27 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.fullscreen_gesture_toggle)
         layout.addWidget(self.fullscreen_button)
         layout.addWidget(self.mobile_label)
-        layout.addWidget(self.qr_label, 0, Qt.AlignmentFlag.AlignHCenter)
+        qr_wrap = QWidget()
+        qr_wrap.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        qr_layout = QVBoxLayout(qr_wrap)
+        qr_layout.setContentsMargins(0, 8, 0, 8)
+        qr_layout.addWidget(self.qr_label, 0, Qt.AlignmentFlag.AlignHCenter)
+        layout.addWidget(qr_wrap, 0, Qt.AlignmentFlag.AlignHCenter)
         gesture_hint = QLabel(self._gesture_hint_text())
         gesture_hint.setWordWrap(True)
         layout.addWidget(gesture_hint)
         layout.addWidget(self.clear_chat_button)
-        layout.addWidget(self.logs, 1)
+        layout.addWidget(self.logs)
+        layout.setSizeConstraint(QVBoxLayout.SizeConstraint.SetMinimumSize)
 
-        root = QWidget()
-        root.setLayout(layout)
-        self.setCentralWidget(root)
+        content = QWidget()
+        content.setLayout(layout)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setWidget(content)
+        self.setCentralWidget(scroll)
         self.signals.mobile_fullscreen_requested.connect(self._capture_current_screen_from_mobile)
         self._setup_tray_icon()
         self._setup_workflow()
@@ -664,7 +681,7 @@ class MainWindow(QMainWindow):
             QR_DISPLAY_PX,
             QR_DISPLAY_PX,
             Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation,
+            Qt.TransformationMode.FastTransformation,
         )
         self.qr_label.setPixmap(scaled)
         self.qr_label.setFixedSize(scaled.width() + 24, scaled.height() + 24)
