@@ -13,6 +13,7 @@
   const chatList = document.getElementById("chat-list");
   const previewList = document.getElementById("preview-list");
   const previewCount = document.getElementById("preview-count");
+  const saveAlbumButton = document.getElementById("save-album-button");
   const outputEl = document.getElementById("output");
   const modelHint = document.getElementById("model-hint");
   const cursorKey = `lastEventId:${sessionId || "missing"}`;
@@ -27,6 +28,7 @@
   let activeDirectRequestId = null;
   let renderScheduled = false;
   let screenshots = [];
+  let lastCapturedImage = "";
   let requestCounter = 0;
   let currentTier = localStorage.getItem(modelTierKey) || "good";
   const maxScreenshots = 5;
@@ -41,6 +43,87 @@
   function nextRequestId(prefix) {
     requestCounter += 1;
     return `${prefix}-${Date.now()}-${requestCounter}`;
+  }
+
+  function extensionForMime(mime) {
+    if (mime === "image/jpeg") {
+      return "jpg";
+    }
+    if (mime === "image/webp") {
+      return "webp";
+    }
+    return "png";
+  }
+
+  function screenshotFileName(mime) {
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    return `QQMusic-${stamp}.${extensionForMime(mime)}`;
+  }
+
+  function dataUrlToBlob(dataUrl) {
+    const match = String(dataUrl || "").match(/^data:([^;]+);base64,(.+)$/);
+    if (!match) {
+      throw new Error("截图数据无效");
+    }
+    const mime = match[1];
+    const binary = atob(match[2]);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+    return { blob: new Blob([bytes], { type: mime }), mime: mime };
+  }
+
+  function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.rel = "noopener";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(function () {
+      URL.revokeObjectURL(url);
+    }, 2000);
+  }
+
+  function saveImageToAlbum(dataUrl) {
+    const parsed = dataUrlToBlob(dataUrl);
+    const filename = screenshotFileName(parsed.mime);
+    const file = new File([parsed.blob], filename, { type: parsed.mime });
+    if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+      return navigator.share({ files: [file], title: "保存截图到相册" }).then(function () {
+        return "shared";
+      });
+    }
+    downloadBlob(parsed.blob, filename);
+    return Promise.resolve("downloaded");
+  }
+
+  function rememberCapturedImage(dataUrl) {
+    lastCapturedImage = dataUrl || "";
+    if (saveAlbumButton) {
+      saveAlbumButton.disabled = !lastCapturedImage;
+    }
+  }
+
+  function saveLatestToAlbum() {
+    if (!lastCapturedImage) {
+      return;
+    }
+    saveImageToAlbum(lastCapturedImage).then(function (method) {
+      if (method === "shared") {
+        setSelectionStatus("completed", "请在系统菜单中选择存储到相册");
+      } else {
+        setSelectionStatus("completed", "已开始保存截图，请在相册或下载中查看");
+      }
+    }).catch(function (error) {
+      if (error && error.name === "AbortError") {
+        return;
+      }
+      setSelectionStatus("error", "保存失败，请长按图片另存到相册");
+    });
   }
 
   function capText(text) {
@@ -182,7 +265,17 @@
         renderPreviewList();
         updateAskButton();
       });
+      const save = document.createElement("button");
+      save.className = "preview-save";
+      save.type = "button";
+      save.setAttribute("aria-label", `保存截图 ${index + 1} 到相册`);
+      save.textContent = "存";
+      save.addEventListener("click", function () {
+        rememberCapturedImage(screenshot.image);
+        saveLatestToAlbum();
+      });
       item.appendChild(image);
+      item.appendChild(save);
       item.appendChild(remove);
       previewList.appendChild(item);
     });
@@ -313,13 +406,18 @@
       setSelectionStatus("completed", "答案已生成，可以继续框选或全屏截题");
     } else if (event.type === "screenshot.captured") {
       if (payload.image) {
-        screenshots.push({ image: payload.image, size: payload.size || 0 });
-        if (screenshots.length > maxScreenshots) {
-          screenshots = screenshots.slice(screenshots.length - maxScreenshots);
+        rememberCapturedImage(payload.image);
+        if (payload.add_to_buffer !== false) {
+          screenshots.push({ image: payload.image, size: payload.size || 0 });
+          if (screenshots.length > maxScreenshots) {
+            screenshots = screenshots.slice(screenshots.length - maxScreenshots);
+          }
+          renderPreviewList();
+          updateAskButton();
+          setSelectionStatus("completed", `已添加截图 ${screenshots.length}/${maxScreenshots}，可保存到相册或发送`);
+        } else {
+          setSelectionStatus("completed", "截图已到达手机，可点「保存到相册」");
         }
-        renderPreviewList();
-        updateAskButton();
-        setSelectionStatus("completed", `已添加截图 ${screenshots.length}/${maxScreenshots}，可继续截图或发送`);
       }
     } else if (event.type === "answer.error") {
       if (isOutdatedAnswerEvent(event)) {
@@ -413,6 +511,10 @@
       sendModelTier(tier);
     });
   });
+
+  if (saveAlbumButton) {
+    saveAlbumButton.addEventListener("click", saveLatestToAlbum);
+  }
 
   clearChatButton.addEventListener("click", function () {
     resetChatUi();

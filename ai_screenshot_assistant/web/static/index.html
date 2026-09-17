@@ -33,7 +33,10 @@
           <div class="empty-chat">可以只截图不输入文字；多张截图会和可选文字一起发送给 AI。</div>
         </div>
         <div class="preview-panel" id="preview-panel" aria-live="polite">
-          <div class="preview-count" id="preview-count">已截图：0张</div>
+          <div class="preview-toolbar">
+            <div class="preview-count" id="preview-count">已截图：0张</div>
+            <button class="save-album" id="save-album-button" type="button" disabled>保存到相册</button>
+          </div>
           <div class="preview-list" id="preview-list"></div>
         </div>
         <textarea

@@ -44,12 +44,17 @@ def test_mobile_page_exposes_model_tiers_and_clear_chat() -> None:
     assert 'data-tier="medium"' in html
     assert 'data-tier="simple"' in html
     assert "清空聊天" in html
+    assert "保存到相册" in html
     assert "command.clear_conversation" in js
     assert "command.set_model_tier" in js
+    assert "saveImageToAlbum" in js
+    assert "navigator.canShare" in js
+    assert "add_to_buffer" in js
     assert "conversation.cleared" in js
     assert "model.changed" in js
     assert ".tier-button" in css
     assert ".clear-chat" in css
+    assert ".save-album" in css
 
 
 def test_desktop_main_window_uses_quiet_zone_qr_and_memory_caps() -> None:
