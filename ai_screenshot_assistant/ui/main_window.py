@@ -361,7 +361,6 @@ class MainWindow(QMainWindow):
         self.app_settings.setValue("overlay/visible", visible)
         if visible:
             self.overlay.show()
-            self.overlay.raise_()
         else:
             self.overlay.hide()
 
@@ -376,9 +375,8 @@ class MainWindow(QMainWindow):
         self.overlay.set_font_px(size)
 
     def _on_stream_started(self) -> None:
-        if self.overlay_toggle.isChecked():
-            self.overlay.show()
-            self.overlay.raise_()
+        # Overlay visibility is owned only by 「显示桌面流式悬浮答案」.
+        # Streaming must not show/raise it, or the main console comes forward too.
         self.overlay.start_stream()
 
     def set_region_gesture_enabled(self, enabled: bool) -> None:

@@ -145,7 +145,9 @@ else:
             if except_window and window == except_window:
                 continue
             _msg(window, "setLevel:", c_long(main_window_level()), restype=None, argtypes=(c_long,))
-            _msg(window, "setHidesOnDeactivate:", c_ubyte(1), restype=None, argtypes=(c_ubyte,))
+            # Keep the console a normal background window. hidesOnDeactivate=YES would
+            # hide it when focus leaves, then unhide/pop it when the overlay is pinned.
+            _msg(window, "setHidesOnDeactivate:", c_ubyte(0), restype=None, argtypes=(c_ubyte,))
 
     def _set_sharing_type(window: int, sharing_type: int) -> None:
         _msg(window, "setSharingType:", c_ulong(sharing_type), restype=None, argtypes=(c_ulong,))
@@ -215,7 +217,15 @@ else:
         window = _window_from_target(target)
         if not _configure_overlay_window(window):
             return
-        _msg(window, "orderFrontRegardless", restype=None)
+        # Stack only the lyric window without activating the application.
+        _msg(
+            window,
+            "orderWindow:relativeTo:",
+            c_long(1),  # NSWindowAbove
+            c_ulong(0),
+            restype=None,
+            argtypes=(c_long, c_ulong),
+        )
 
     def set_click_through(target: object, enabled: bool) -> None:
         window = _window_from_target(target)
