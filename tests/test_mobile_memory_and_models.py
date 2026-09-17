@@ -45,16 +45,24 @@ def test_mobile_page_exposes_model_tiers_and_clear_chat() -> None:
     assert 'data-tier="simple"' in html
     assert "清空聊天" in html
     assert "保存到相册" in html
+    assert "全选" in html
+    assert "添加到照片" in html
     assert "command.clear_conversation" in js
     assert "command.set_model_tier" in js
-    assert "saveImageToAlbum" in js
-    assert "navigator.canShare" in js
+    assert "saveImagesToAlbum" in js
+    assert "selectedAlbumItems" in js
+    assert "preview-check" in js
+    assert "存储图像" in js
+    assert "isAppleMobile" in js
+    assert "downloadBlob" not in js
     assert "add_to_buffer" in js
     assert "conversation.cleared" in js
     assert "model.changed" in js
     assert ".tier-button" in css
     assert ".clear-chat" in css
     assert ".save-album" in css
+    assert ".preview-check" in css
+    assert ".album-sheet" in css
 
 
 def test_desktop_main_window_uses_quiet_zone_qr_and_memory_caps() -> None:

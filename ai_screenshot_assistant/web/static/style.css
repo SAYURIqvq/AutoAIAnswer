@@ -278,6 +278,12 @@ h1 { margin: 0; font-size: 20px; }
   gap: 8px;
 }
 
+.preview-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .preview-count {
   color: var(--muted);
   font-size: 12px;
@@ -293,6 +299,10 @@ h1 { margin: 0; font-size: 20px; }
   color: var(--text);
   font-size: 13px;
   font-weight: 700;
+}
+
+.save-album.ghost {
+  background: transparent;
 }
 
 .save-album:disabled {
@@ -322,6 +332,11 @@ h1 { margin: 0; font-size: 20px; }
   background: #0d1728;
 }
 
+.preview-item.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
 .preview-item img {
   width: 100%;
   height: 100%;
@@ -329,35 +344,71 @@ h1 { margin: 0; font-size: 20px; }
   display: block;
 }
 
-.preview-remove,
-.preview-save {
+.preview-check {
   position: absolute;
+  left: 4px;
+  top: 4px;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+}
+
+.preview-remove {
+  position: absolute;
+  top: 3px;
+  right: 3px;
   width: 20px;
   height: 20px;
   border: 1px solid rgba(255, 255, 255, 0.45);
   border-radius: 50%;
   background: rgba(8, 17, 31, 0.82);
   color: var(--text);
-  font-size: 13px;
+  font-size: 16px;
   line-height: 16px;
   padding: 0;
 }
 
-.preview-remove {
-  top: 3px;
-  right: 3px;
-  font-size: 16px;
+.album-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: end center;
+  padding: 16px;
+  background: rgba(5, 11, 20, 0.72);
 }
 
-.preview-save {
-  left: 3px;
-  bottom: 3px;
-  width: auto;
-  min-width: 20px;
-  padding: 0 4px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 700;
+.album-sheet[hidden] {
+  display: none;
+}
+
+.album-sheet-card {
+  width: min(100%, 520px);
+  max-height: 78vh;
+  overflow: auto;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #111827;
+}
+
+.album-sheet-card p {
+  margin: 0 0 10px;
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.album-sheet-images {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.album-sheet-images img {
+  width: 100%;
+  border-radius: 8px;
+  background: #0d1728;
 }
 
 .chatbot textarea {
