@@ -38,10 +38,11 @@ def _bool_env(name: str, default: bool = False) -> bool:
 class Settings:
     deepseek_api_key: str = os.getenv("DEEPSEEK_API_KEY", "")
     deepseek_base_url: str = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
-    deepseek_model: str = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash-vision-exp")
+    deepseek_model: str = os.getenv("DEEPSEEK_MODEL", "deepseek-flash")
     openrouter_api_key: str = os.getenv("OPENROUTER_API_KEY", "")
     openrouter_base_url: str = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
-    openrouter_model: str = os.getenv("OPENROUTER_MODEL", "qwen/qwen3.8-flash")
+    openrouter_model: str = os.getenv("OPENROUTER_MODEL", "qwen/qwen3-vl-235b-a22b-thinking")
+    model_tier: str = os.getenv("MODEL_TIER", "good")
     backend_url: str = os.getenv("BACKEND_URL", "auto")
     backend_port: int = int(os.getenv("BACKEND_PORT", "8000"))
     embedded_backend: bool = _bool_env("EMBEDDED_BACKEND", True)

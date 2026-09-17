@@ -8,6 +8,8 @@ from typing import Any
 
 import websockets
 
+WEBSOCKET_MAX_BYTES = 12 * 1024 * 1024
+
 
 class DesktopCommandClient:
     def __init__(self, backend_url: str, session_id: str, on_command: Callable[[dict[str, Any]], None]) -> None:
@@ -24,7 +26,7 @@ class DesktopCommandClient:
     async def _run(self) -> None:
         while not self._closed:
             try:
-                async with websockets.connect(self.url, proxy=None, max_size=None) as websocket:
+                async with websockets.connect(self.url, proxy=None, max_size=WEBSOCKET_MAX_BYTES) as websocket:
                     async for message in websocket:
                         try:
                             data = json.loads(message)

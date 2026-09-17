@@ -48,6 +48,34 @@ h1 { margin: 0; font-size: 20px; }
 
 .status.online { color: var(--accent); }
 
+.model-tiers {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.tier-button {
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #0d1728;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.tier-button.active {
+  background: var(--accent);
+  color: #062015;
+  border-color: var(--accent);
+}
+
+.model-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .selection-status {
   display: flex;
   align-items: center;
@@ -113,10 +141,21 @@ h1 { margin: 0; font-size: 20px; }
 
 .chat-header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
   font-size: 15px;
+  font-weight: 700;
+}
+
+.clear-chat {
+  min-height: 32px;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #0d1728;
+  color: var(--text);
+  font-size: 13px;
   font-weight: 700;
 }
 

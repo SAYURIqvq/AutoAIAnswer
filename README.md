@@ -55,9 +55,12 @@ Mac 上打包只需要 `macos/` 目录：拷到 Mac 后执行 `./build.sh`。Win
 
 - 支持选择题、判断题、填空题、计算题和简答题；一图多题会按题号对应作答
 - DeepSeek 与 OpenRouter 均可选，只需配置其中一把 Key 即可使用
-- 两把 Key 都有时优先 DeepSeek；DeepSeek 返回 HTTP 402 时自动切换 OpenRouter
-- OpenRouter 默认模型为 `qwen/qwen3.8-flash`，模型 ID 可修改
-- DeepSeek Key、OpenRouter Key 和模型设置可在桌面界面保存
+- DeepSeek 官方目前只有 `deepseek-flash` 具备原生视觉，用作「简单」档
+- 手机和桌面可切换「好 / 中等 / 简单」：好档为通义千问 VL 235B Thinking，中等档为 32B，简单档为 DeepSeek Flash 或通义千问 VL 8B
+- 只使用中国模型（DeepSeek / 通义千问），不会调用 GPT、Claude、Gemini 等国外模型
+- 两把 Key 都有时，好/中等档走 OpenRouter 通义千问 VL；简单档优先 DeepSeek，DeepSeek 返回 HTTP 402 时再切 OpenRouter
+- DeepSeek Key、OpenRouter Key 和模型档位可在桌面界面保存
+- 手机对话支持清空聊天并释放电脑端会话内存
 - 左键长按 2 秒框选题目；右键长按 2 秒截取当前屏幕全屏（macOS 也可用 Control+左键，或窗口内「截取当前屏幕」）
 - 手机二维码配对，答案与解析在单一输出框中实时流式显示
 - 手机端可一键让电脑截全屏，也可输入追问后截全屏并发送给 AI，支持围绕同一截图任务连续追问
@@ -66,7 +69,7 @@ Mac 上打包只需要 `macos/` 目录：拷到 Mac 后执行 `./build.sh`。Win
 
 ## 使用方式
 
-1. 启动程序，至少填写一把 DeepSeek 或 OpenRouter Key 并保存；两把都填时优先 DeepSeek。
+1. 启动程序，至少填写一把 DeepSeek 或 OpenRouter Key 并保存。好/中等档需要 OpenRouter Key 才能使用通义千问 VL。
 2. 确保手机与电脑连接同一局域网。
 3. 用手机扫描桌面窗口中的二维码并保持页面打开。
 4. 框选题目：在起点按住左键至少 2 秒，松开后移动到终点，再普通单击一次左键。
@@ -85,10 +88,11 @@ Windows 首次运行可能询问防火墙权限，请允许程序访问“专用
 
 ## 模型切换规则
 
-- 只配置了 OpenRouter 时，直接使用 OpenRouter。
-- 配置了 DeepSeek 时，启动后首先使用 DeepSeek 官方接口与视觉模型。
-- 只有 DeepSeek 返回 HTTP 402（额度不足）且已配置 OpenRouter Key 时，才会用同一截图重试 OpenRouter。
-- 切换后，本次软件运行期间继续使用 OpenRouter；重启软件后若仍有 DeepSeek Key，会重新从 DeepSeek 开始。
+- 手机和桌面都可以手动选择「好 / 中等 / 简单」。
+- DeepSeek 官方视觉模型目前只有 `deepseek-flash`，因此无法用 DeepSeek 单独做出三档精度差异。
+- 配置了 OpenRouter Key 时：好档使用 `qwen/qwen3-vl-235b-a22b-thinking`，中等档使用 `qwen/qwen3-vl-32b-instruct`，简单档在没有 DeepSeek Key 时使用 `qwen/qwen3-vl-8b-instruct`。
+- 简单档且配置了 DeepSeek Key 时，优先使用 DeepSeek Flash；只有 DeepSeek 返回 HTTP 402 且已配置 OpenRouter Key 时，才会用同一截图重试 OpenRouter。
+- 好/中等档直接使用通义千问 VL，不再默认走 Flash。
 - 认证失败、限流、超时、网络错误和服务端错误不会自动切换，以免重复消耗额度。
 
 ## 从源码运行
@@ -120,12 +124,13 @@ chmod +x run_desktop.sh
 
 ```env
 DEEPSEEK_API_KEY=
-DEEPSEEK_MODEL=deepseek-v4-flash-vision-exp
+DEEPSEEK_MODEL=deepseek-flash
 DEEPSEEK_BASE_URL=https://api.deepseek.com
 
 OPENROUTER_API_KEY=
-OPENROUTER_MODEL=qwen/qwen3.8-flash
+OPENROUTER_MODEL=qwen/qwen3-vl-235b-a22b-thinking
 OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+MODEL_TIER=good
 ```
 
 不要提交真实 API Key。桌面界面保存的设置由 Qt `QSettings` 存储在当前系统用户配置中。

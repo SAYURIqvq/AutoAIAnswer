@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import base64
-import io
+import gc
 import sys
 import threading
 from typing import Any
@@ -11,6 +11,7 @@ from PySide6.QtGui import QAction, QCloseEvent, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
+    QComboBox,
     QFormLayout,
     QHBoxLayout,
     QLabel,
@@ -19,6 +20,7 @@ from PySide6.QtWidgets import (
     QMenu,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
     QSlider,
     QStyle,
     QSystemTrayIcon,
@@ -28,14 +30,17 @@ from PySide6.QtWidgets import (
 )
 
 from ai_screenshot_assistant.ai.client import FailoverVisionClient, ProviderConfig
+from ai_screenshot_assistant.ai.models import DEFAULT_MODEL_TIER, TIER_LABELS, normalize_model_tier, tier_options
 from ai_screenshot_assistant.backend_api import BackendApi, BackendSession
 from ai_screenshot_assistant.capture.screenshot import ScreenCapture
 from ai_screenshot_assistant.config import settings
+from ai_screenshot_assistant.core.messages import Event
 from ai_screenshot_assistant.core.workflow import AssistantWorkflow
 from ai_screenshot_assistant.desktop_command_client import DesktopCommandClient
 from ai_screenshot_assistant.input.mouse_listener import MouseRoiListener
 from ai_screenshot_assistant.resources import app_icon_path
 from ai_screenshot_assistant.ui.streaming_overlay import StreamingOverlay
+from ai_screenshot_assistant.utils.qrcode_image import QR_DISPLAY_PX, pair_qr_png_bytes
 from ai_screenshot_assistant.websocket_client import DesktopWebSocketPublisher
 
 gAppName = str("QQMusic")
@@ -50,6 +55,8 @@ class UiSignals(QObject):
     stream_completed = Signal(str)
     stream_error = Signal(str)
     mobile_fullscreen_requested = Signal(dict)
+    clear_conversation_requested = Signal()
+    model_tier_requested = Signal(str)
 
 
 class MainWindow(QMainWindow):
@@ -60,7 +67,7 @@ class MainWindow(QMainWindow):
         icon = self._app_icon()
         if not icon.isNull():
             self.setWindowIcon(icon)
-        self.setMinimumSize(560, 660)
+        self.setMinimumSize(560, 720)
         self.app_settings = QSettings("AI Screenshot Assistant", "Desktop")
 
         legacy_key = str(self.app_settings.value("api/key", "") or "")
@@ -70,8 +77,8 @@ class MainWindow(QMainWindow):
         self.openrouter_key = str(
             self.app_settings.value("providers/openrouter_key", settings.openrouter_api_key) or ""
         )
-        self.openrouter_model = str(
-            self.app_settings.value("providers/openrouter_model", settings.openrouter_model) or settings.openrouter_model
+        self.model_tier = normalize_model_tier(
+            str(self.app_settings.value("providers/model_tier", settings.model_tier) or DEFAULT_MODEL_TIER)
         )
 
         self.signals = UiSignals()
@@ -79,6 +86,8 @@ class MainWindow(QMainWindow):
         self.signals.result.connect(self.show_result)
         self.signals.error.connect(self.show_error)
         self.signals.provider_changed.connect(self._on_provider_failover)
+        self.signals.clear_conversation_requested.connect(self._clear_conversation)
+        self.signals.model_tier_requested.connect(self._on_model_tier_requested)
 
         self.overlay = StreamingOverlay(self.app_settings)
         self.signals.stream_started.connect(self._on_stream_started)
@@ -97,15 +106,19 @@ class MainWindow(QMainWindow):
         self.fullscreen_gesture_enabled = self._settings_bool("gestures/fullscreen_enabled", True)
 
         self.status_label = QLabel("状态：准备中")
-        self.provider_label = QLabel("当前模型：DeepSeek / deepseek-v4-flash-vision-exp")
+        self.provider_label = QLabel("当前模型：未配置")
         self.deepseek_key_input = QLineEdit(self.deepseek_key)
         self.deepseek_key_input.setEchoMode(QLineEdit.Normal)
-        self.deepseek_key_input.setPlaceholderText("可选，填写后优先使用")
+        self.deepseek_key_input.setPlaceholderText("可选，简单档优先使用")
         self.openrouter_key_input = QLineEdit(self.openrouter_key)
         self.openrouter_key_input.setEchoMode(QLineEdit.Normal)
-        self.openrouter_key_input.setPlaceholderText("可选，仅填这一把也可以用")
-        self.openrouter_model_input = QLineEdit(self.openrouter_model)
-        self.openrouter_model_input.setPlaceholderText("使用 OpenRouter 时生效")
+        self.openrouter_key_input.setPlaceholderText("可选，好/中等档使用通义千问 VL")
+        self.model_tier_combo = QComboBox()
+        for tier, label, hint in tier_options():
+            self.model_tier_combo.addItem(f"{label} · {hint}", tier)
+        index = self.model_tier_combo.findData(self.model_tier)
+        self.model_tier_combo.setCurrentIndex(index if index >= 0 else 0)
+        self.model_tier_combo.currentIndexChanged.connect(self._on_desktop_model_tier)
         self.save_providers_button = QPushButton("保存模型配置")
         self.save_providers_button.clicked.connect(self.save_provider_settings)
         self.save_status = QLabel("")
@@ -139,13 +152,21 @@ class MainWindow(QMainWindow):
         self.mobile_label = QLabel("手机端：正在创建配对链接")
         self.mobile_label.setWordWrap(True)
         self.qr_label = QLabel()
+        self.qr_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.qr_label.setScaledContents(False)
+        self.qr_label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self.qr_label.setMinimumSize(QR_DISPLAY_PX, QR_DISPLAY_PX)
+        self.qr_label.setStyleSheet("QLabel { background: #ffffff; padding: 12px; border-radius: 8px; }")
         self.logs = QTextEdit()
         self.logs.setReadOnly(True)
+        self.logs.document().setMaximumBlockCount(80)
+        self.clear_chat_button = QPushButton("清空对话记录")
+        self.clear_chat_button.clicked.connect(self._clear_conversation)
 
         provider_form = QFormLayout()
         provider_form.addRow("DeepSeek Key（可选）", self.deepseek_key_input)
         provider_form.addRow("OpenRouter Key（可选）", self.openrouter_key_input)
-        provider_form.addRow("OpenRouter 模型", self.openrouter_model_input)
+        provider_form.addRow("模型档位", self.model_tier_combo)
 
         save_row = QHBoxLayout()
         save_row.addWidget(self.save_providers_button)
@@ -169,10 +190,11 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.fullscreen_gesture_toggle)
         layout.addWidget(self.fullscreen_button)
         layout.addWidget(self.mobile_label)
-        layout.addWidget(self.qr_label)
+        layout.addWidget(self.qr_label, 0, Qt.AlignmentFlag.AlignHCenter)
         gesture_hint = QLabel(self._gesture_hint_text())
         gesture_hint.setWordWrap(True)
         layout.addWidget(gesture_hint)
+        layout.addWidget(self.clear_chat_button)
         layout.addWidget(self.logs, 1)
 
         root = QWidget()
@@ -256,48 +278,60 @@ class MainWindow(QMainWindow):
             name="OpenRouter",
             api_key=self.openrouter_key,
             base_url=settings.openrouter_base_url,
-            model=self.openrouter_model,
+            model=settings.openrouter_model,
             timeout_seconds=settings.request_timeout_seconds,
         )
         return FailoverVisionClient(
             deepseek,
             openrouter,
             on_provider_changed=lambda name: self.signals.provider_changed.emit(name),
+            model_tier=self.model_tier,
         )
 
     def save_provider_settings(self) -> None:
         deepseek_key = self.deepseek_key_input.text().strip()
         openrouter_key = self.openrouter_key_input.text().strip()
-        openrouter_model = self.openrouter_model_input.text().strip() or settings.openrouter_model
         if not deepseek_key and not openrouter_key:
             self.save_status.setText("请至少填写 DeepSeek 或 OpenRouter 其中一把 Key")
             self.save_status.setStyleSheet("color: #d33;")
             return
-        if openrouter_key:
-            self.openrouter_model_input.setText(openrouter_model)
         self.deepseek_key = deepseek_key
         self.openrouter_key = openrouter_key
-        self.openrouter_model = openrouter_model
+        self.model_tier = normalize_model_tier(self.model_tier_combo.currentData())
         self.app_settings.setValue("providers/deepseek_key", deepseek_key)
         self.app_settings.setValue("providers/openrouter_key", openrouter_key)
-        self.app_settings.setValue("providers/openrouter_model", openrouter_model)
+        self.app_settings.setValue("providers/model_tier", self.model_tier)
         self.app_settings.sync()
         client = self._build_ai_client()
         if self.workflow is not None:
             self.workflow.ai_client = client
-        self.set_provider(client.current_provider)
-        if deepseek_key:
-            self.save_status.setText("已保存；有 DeepSeek Key 时下一题从 DeepSeek 开始")
+        self._refresh_provider_label()
+        self._publish_model_changed()
+        if self.model_tier in {"good", "medium"} and openrouter_key:
+            self.save_status.setText("已保存；好/中等档使用通义千问 VL")
+        elif deepseek_key:
+            self.save_status.setText("已保存；简单档优先 DeepSeek Flash")
         else:
-            self.save_status.setText("已保存；将使用 OpenRouter")
+            self.save_status.setText("已保存；将使用通义千问 VL")
         self.save_status.setStyleSheet("color: #198754;")
         self._log("Provider settings updated")
 
     def set_provider(self, provider: str) -> None:
-        if provider == "openrouter":
-            self.provider_label.setText(f"当前模型：OpenRouter / {self.openrouter_model}")
-        elif provider == "deepseek":
-            self.provider_label.setText(f"当前模型：DeepSeek / {settings.deepseek_model}")
+        self._refresh_provider_label(provider)
+
+    def _refresh_provider_label(self, provider: str | None = None) -> None:
+        client = self.workflow.ai_client if self.workflow is not None else None
+        current = provider or getattr(client, "current_provider", "none")
+        model = ""
+        if client is not None and hasattr(client, "current_model_id"):
+            model = client.current_model_id()
+        tier_label = TIER_LABELS.get(self.model_tier, "好")
+        if current == "openrouter" and model:
+            self.provider_label.setText(f"当前模型：{tier_label} / OpenRouter / {model}")
+        elif current == "deepseek" and model:
+            self.provider_label.setText(f"当前模型：{tier_label} / DeepSeek / {model}")
+        elif current in {"openrouter", "deepseek"}:
+            self.provider_label.setText(f"当前模型：{tier_label} / {current}")
         else:
             self.provider_label.setText("当前模型：未配置 Key")
 
@@ -374,7 +408,8 @@ class MainWindow(QMainWindow):
         self.workflow.on_stream_delta = self.signals.stream_delta.emit
         self.workflow.on_stream_completed = self.signals.stream_completed.emit
         self.workflow.on_stream_error = self.signals.stream_error.emit
-        self.set_provider(ai_client.current_provider)
+        self._refresh_provider_label(ai_client.current_provider)
+        self._publish_model_changed()
         if ai_client.current_provider == "none":
             self.save_status.setText("请至少填写一把 API Key 后保存")
             self.save_status.setStyleSheet("color: #d33;")
@@ -503,6 +538,14 @@ class MainWindow(QMainWindow):
         elif command.get("type") == "command.submit_screenshots":
             payload = command.get("payload")
             self._submit_mobile_screenshots(payload if isinstance(payload, dict) else {})
+        elif command.get("type") == "command.clear_conversation":
+            self.signals.clear_conversation_requested.emit()
+        elif command.get("type") == "command.set_model_tier":
+            payload = command.get("payload")
+            tier = ""
+            if isinstance(payload, dict):
+                tier = str(payload.get("tier") or "")
+            self.signals.model_tier_requested.emit(tier)
 
     def _gesture_hint_text(self) -> str:
         if sys.platform == "darwin":
@@ -615,13 +658,67 @@ class MainWindow(QMainWindow):
         self.logs.append(message)
 
     def _set_qr(self, url: str) -> None:
-        import qrcode
-        image = qrcode.make(url)
-        buffer = io.BytesIO()
-        image.save(buffer, format="PNG")
         pixmap = QPixmap()
-        pixmap.loadFromData(buffer.getvalue(), "PNG")
-        self.qr_label.setPixmap(pixmap.scaledToWidth(160))
+        pixmap.loadFromData(pair_qr_png_bytes(url), "PNG")
+        scaled = pixmap.scaled(
+            QR_DISPLAY_PX,
+            QR_DISPLAY_PX,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        self.qr_label.setPixmap(scaled)
+        self.qr_label.setFixedSize(scaled.width() + 24, scaled.height() + 24)
+
+    def _on_desktop_model_tier(self, _index: int) -> None:
+        self._apply_model_tier(str(self.model_tier_combo.currentData() or DEFAULT_MODEL_TIER))
+
+    def _on_model_tier_requested(self, tier: str) -> None:
+        self._apply_model_tier(tier, sync_combo=True)
+
+    def _apply_model_tier(self, tier: str, *, sync_combo: bool = False) -> None:
+        if self.workflow is None:
+            self.model_tier = normalize_model_tier(tier)
+            return
+        payload = self.workflow.set_model_tier(tier)
+        self.model_tier = normalize_model_tier(str(payload.get("tier") or tier))
+        self.app_settings.setValue("providers/model_tier", self.model_tier)
+        self.app_settings.sync()
+        if sync_combo:
+            self.model_tier_combo.blockSignals(True)
+            index = self.model_tier_combo.findData(self.model_tier)
+            if index >= 0:
+                self.model_tier_combo.setCurrentIndex(index)
+            self.model_tier_combo.blockSignals(False)
+        self._refresh_provider_label()
+
+    def _publish_model_changed(self) -> None:
+        if self.workflow is None:
+            return
+        client = self.workflow.ai_client
+        apply_tier = getattr(client, "apply_model_tier", None)
+        if callable(apply_tier):
+            payload = apply_tier(self.model_tier, notify=False).to_payload()
+        else:
+            payload = {"tier": self.model_tier}
+        if self.publisher is not None:
+            event = Event(
+                type="model.changed",
+                session_id=self.workflow.session_id,
+                payload=payload,
+            )
+            try:
+                self.publisher.send_sync(event.to_dict())
+            except Exception as exc:
+                self._log(f"Mobile update failed: {exc}")
+        self._refresh_provider_label()
+
+    def _clear_conversation(self) -> None:
+        if self.workflow is not None:
+            self.workflow.clear_conversation()
+        self.overlay.clear()
+        self.logs.clear()
+        gc.collect()
+        self._log("已清空对话记录并释放内存")
 
     def closeEvent(self, event: QCloseEvent) -> None:
         if not self._force_quit and self.tray_icon is not None and self.tray_icon.isVisible():

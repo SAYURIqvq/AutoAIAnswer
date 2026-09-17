@@ -381,3 +381,117 @@ def test_mobile_ai_error_is_published() -> None:
     assert errors[0]["session_id"] == "s1"
     assert errors[0]["request_id"] == "chat-error"
     assert errors[0]["payload"] == {"message": "provider rejected request"}
+
+
+def test_conversation_memory_is_capped() -> None:
+    ai_client = FakeAI()
+    workflow = AssistantWorkflow(
+        session_id="s1",
+        capture=FakeCapture(),
+        ai_client=ai_client,
+        publisher=FakePublisher(),
+        app_settings=replace(settings, save_debug_image=False),
+    )
+    workflow.mobile_conversation = [{"role": "user", "content": f"turn-{index}"} for index in range(20)]
+
+    workflow.process_mobile_images(["one"], user_text="追问", use_conversation=True, is_chat=True)
+
+    assert len(ai_client.calls[0]["conversation"]) == 6
+    assert len(workflow.mobile_conversation) == 6
+    assert workflow.mobile_conversation[0]["content"] in {"turn-16", "turn-17", "追问"}
+
+
+def test_long_chat_turns_are_truncated() -> None:
+    class LongAI:
+        def analyze_images_stream(self, png_images, user_text=None, conversation=None):
+            yield "答案：" + ("解析很长" * 200)
+
+    workflow = AssistantWorkflow(
+        session_id="s1",
+        capture=FakeCapture(),
+        ai_client=LongAI(),
+        publisher=FakePublisher(),
+        app_settings=replace(settings, save_debug_image=False),
+    )
+
+    workflow.process_mobile_images([b"one"], user_text="问", use_conversation=True, is_chat=True)
+
+    assert all(len(item["content"]) <= 600 for item in workflow.mobile_conversation)
+
+
+def test_clear_conversation_releases_memory_and_publishes() -> None:
+    publisher = FakePublisher()
+    workflow = AssistantWorkflow(
+        session_id="s1",
+        capture=FakeCapture(),
+        ai_client=FakeAI(),
+        publisher=publisher,
+        app_settings=replace(settings, save_debug_image=False),
+    )
+    workflow.mobile_conversation = [
+        {"role": "user", "content": "上一题"},
+        {"role": "assistant", "content": "答案：A"},
+    ]
+
+    result = workflow.clear_conversation()
+
+    assert result["released_turns"] == 2
+    assert workflow.mobile_conversation == []
+    assert publisher.events[-1]["type"] == "conversation.cleared"
+
+
+def test_set_model_tier_publishes_choice() -> None:
+    class TierClient:
+        def apply_model_tier(self, tier, notify=True):
+            from ai_screenshot_assistant.ai.models import resolve_model_choice
+
+            return resolve_model_choice(tier, has_deepseek=True, has_openrouter=True)
+
+    publisher = FakePublisher()
+    workflow = AssistantWorkflow(
+        session_id="s1",
+        capture=FakeCapture(),
+        ai_client=TierClient(),
+        publisher=publisher,
+        app_settings=replace(settings, save_debug_image=False),
+    )
+
+    payload = workflow.set_model_tier("中等")
+
+    assert payload["tier"] == "medium"
+    assert payload["model"] == "qwen/qwen3-vl-32b-instruct"
+    assert publisher.events[-1]["type"] == "model.changed"
+    assert publisher.events[-1]["payload"]["label"] == "中等"
+
+
+def test_overlapping_analysis_is_rejected() -> None:
+    import threading
+
+    started = threading.Event()
+    proceed = threading.Event()
+
+    class SlowAI:
+        def analyze_images_stream(self, png_images, user_text=None, conversation=None):
+            started.set()
+            proceed.wait(timeout=2)
+            yield "答案：A"
+
+    publisher = FakePublisher()
+    workflow = AssistantWorkflow(
+        session_id="s1",
+        capture=FakeCapture(),
+        ai_client=SlowAI(),
+        publisher=publisher,
+        app_settings=replace(settings, save_debug_image=False),
+    )
+
+    worker = threading.Thread(target=workflow.process_mobile_images, args=([b"one"],), daemon=True)
+    worker.start()
+    assert started.wait(1)
+    workflow.process_mobile_images([b"two"])
+    proceed.set()
+    worker.join(timeout=2)
+
+    errors = [event for event in publisher.events if event["type"] == "answer.error"]
+    assert any("上一题仍在分析" in event["payload"]["message"] for event in errors)
+

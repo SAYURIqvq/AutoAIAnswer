@@ -9,11 +9,14 @@
   const chatCaptureButton = document.getElementById("chat-capture-button");
   const questionInput = document.getElementById("question-input");
   const askButton = document.getElementById("ask-button");
+  const clearChatButton = document.getElementById("clear-chat-button");
   const chatList = document.getElementById("chat-list");
   const previewList = document.getElementById("preview-list");
   const previewCount = document.getElementById("preview-count");
   const outputEl = document.getElementById("output");
+  const modelHint = document.getElementById("model-hint");
   const cursorKey = `lastEventId:${sessionId || "missing"}`;
+  const modelTierKey = `modelTier:${sessionId || "missing"}`;
   let lastEventId = Number(localStorage.getItem(cursorKey) || 0);
   let reconnectMs = 1000;
   let buffer = "";
@@ -25,9 +28,15 @@
   let renderScheduled = false;
   let screenshots = [];
   let requestCounter = 0;
+  let currentTier = localStorage.getItem(modelTierKey) || "good";
   const maxScreenshots = 5;
-  const maxChatMessages = 80;
-  const maxRenderChars = 100000;
+  const maxChatMessages = 40;
+  const maxRenderChars = 40000;
+  const tierHints = {
+    good: "好档：通义千问 VL 235B Thinking",
+    medium: "中等档：通义千问 VL 32B",
+    simple: "简单档：DeepSeek Flash 或通义千问 VL 8B"
+  };
 
   function nextRequestId(prefix) {
     requestCounter += 1;
@@ -92,6 +101,7 @@
     statusEl.classList.toggle("online", Boolean(online));
     fullscreenButton.disabled = !online;
     chatCaptureButton.disabled = !online;
+    clearChatButton.disabled = !online;
     updateAskButton();
   }
 
@@ -103,6 +113,47 @@
   function setSelectionStatus(state, message) {
     selectionEl.className = `selection-status ${state || "waiting"}`;
     selectionMessageEl.textContent = message || "等待操作";
+  }
+
+  function resetChatUi() {
+    activeChatRequestId = null;
+    activeAssistantBubble = null;
+    activeAssistantText = "";
+    activeDirectRequestId = null;
+    buffer = "";
+    screenshots = [];
+    renderPreviewList();
+    chatList.textContent = "";
+    const empty = document.createElement("div");
+    empty.className = "empty-chat";
+    empty.textContent = "可以只截图不输入文字；多张截图会和可选文字一起发送给 AI。";
+    chatList.appendChild(empty);
+    setOutput("等待电脑端发送题目…");
+    updateAskButton();
+  }
+
+  function setActiveTier(tier, persist) {
+    const next = ["good", "medium", "simple"].indexOf(tier) >= 0 ? tier : "good";
+    currentTier = next;
+    document.querySelectorAll(".tier-button").forEach(function (button) {
+      button.classList.toggle("active", button.getAttribute("data-tier") === next);
+    });
+    if (modelHint) {
+      modelHint.textContent = tierHints[next] || "";
+    }
+    if (persist !== false) {
+      localStorage.setItem(modelTierKey, next);
+    }
+  }
+
+  function sendModelTier(tier) {
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      return;
+    }
+    socket.send(JSON.stringify({
+      type: "command.set_model_tier",
+      payload: { tier: tier }
+    }));
   }
 
   function clearEmptyChat() {
@@ -281,6 +332,13 @@
         activeDirectRequestId = null;
       }
       setSelectionStatus("error", "分析失败，可以重新框选或全屏截题");
+    } else if (event.type === "conversation.cleared") {
+      resetChatUi();
+    } else if (event.type === "model.changed") {
+      setActiveTier(payload.tier || currentTier, true);
+      if (payload.display_name && modelHint) {
+        modelHint.textContent = payload.display_name;
+      }
     }
   }
 
@@ -294,6 +352,7 @@
     socket.onopen = function () {
       reconnectMs = 1000;
       setConnectionStatus("电脑已连接", true);
+      sendModelTier(currentTier);
     };
     socket.onmessage = function (message) {
       const event = JSON.parse(message.data);
@@ -347,6 +406,22 @@
 
   questionInput.addEventListener("input", updateAskButton);
 
+  document.querySelectorAll(".tier-button").forEach(function (button) {
+    button.addEventListener("click", function () {
+      const tier = button.getAttribute("data-tier") || "good";
+      setActiveTier(tier, true);
+      sendModelTier(tier);
+    });
+  });
+
+  clearChatButton.addEventListener("click", function () {
+    resetChatUi();
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      return;
+    }
+    socket.send(JSON.stringify({ type: "command.clear_conversation" }));
+  });
+
   askButton.addEventListener("click", function () {
     if (!socket || socket.readyState !== WebSocket.OPEN) {
       return;
@@ -389,5 +464,6 @@
   });
 
   renderPreviewList();
+  setActiveTier(currentTier, false);
   connect();
 })();

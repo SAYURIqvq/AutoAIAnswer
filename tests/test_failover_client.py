@@ -28,7 +28,7 @@ def config(name: str, api_key: str = "key") -> ProviderConfig:
 
 def test_deepseek_402_switches_to_openrouter_for_session() -> None:
     changes = []
-    client = FailoverVisionClient(config("DeepSeek"), config("OpenRouter"), changes.append)
+    client = FailoverVisionClient(config("DeepSeek"), config("OpenRouter"), changes.append, model_tier="simple")
     deepseek = FakeClient(error=http_error(402))
     openrouter = FakeClient(chunks=["答案：B", "\n解析：测试"])
     client.deepseek = deepseek
@@ -43,7 +43,7 @@ def test_deepseek_402_switches_to_openrouter_for_session() -> None:
 
 
 def test_non_402_does_not_switch() -> None:
-    client = FailoverVisionClient(config("DeepSeek"), config("OpenRouter"))
+    client = FailoverVisionClient(config("DeepSeek"), config("OpenRouter"), model_tier="simple")
     client.deepseek = FakeClient(error=http_error(429))
     client.openrouter = FakeClient(chunks=["unused"])
 
@@ -98,8 +98,37 @@ def test_missing_keys_raise_before_calling_providers() -> None:
     assert client.openrouter.calls == 0
 
 
+def test_good_tier_uses_chinese_openrouter_model_when_both_keys() -> None:
+    client = FailoverVisionClient(config("DeepSeek"), config("OpenRouter"), model_tier="good")
+
+    assert client.current_provider == "openrouter"
+    assert client.current_model_id() == "qwen/qwen3-vl-235b-a22b-thinking"
+    assert client.openrouter.provider.model == "qwen/qwen3-vl-235b-a22b-thinking"
+    assert client.deepseek.provider.model == "deepseek-flash"
+
+
+def test_simple_tier_prefers_deepseek_flash_when_available() -> None:
+    client = FailoverVisionClient(config("DeepSeek"), config("OpenRouter"), model_tier="simple")
+
+    assert client.current_provider == "deepseek"
+    assert client.current_model_id() == "deepseek-flash"
+
+
+def test_switching_tier_updates_provider_and_model() -> None:
+    changes: list[str] = []
+    client = FailoverVisionClient(config("DeepSeek"), config("OpenRouter"), changes.append, model_tier="simple")
+
+    choice = client.apply_model_tier("medium")
+
+    assert choice.tier == "medium"
+    assert client.current_provider == "openrouter"
+    assert client.current_model_id() == "qwen/qwen3-vl-32b-instruct"
+    assert changes == []
+
+
+
 def test_deepseek_402_without_openrouter_key_does_not_switch() -> None:
-    client = FailoverVisionClient(config("DeepSeek"), config("OpenRouter", api_key=""))
+    client = FailoverVisionClient(config("DeepSeek"), config("OpenRouter", api_key=""), model_tier="simple")
     client.deepseek = FakeClient(error=http_error(402))
     client.openrouter = FakeClient(chunks=["unused"])
 

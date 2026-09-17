@@ -124,7 +124,13 @@ async def _handle_mobile_message(session: Any, message: str) -> None:
     except json.JSONDecodeError:
         return
     command_type = data.get("type")
-    if command_type not in {"command.fullscreen", "command.capture_fullscreen", "command.submit_screenshots"}:
+    if command_type not in {
+        "command.fullscreen",
+        "command.capture_fullscreen",
+        "command.submit_screenshots",
+        "command.clear_conversation",
+        "command.set_model_tier",
+    }:
         return
     if session.desktop_commands is not None:
         payload = _mobile_command_payload(data)
@@ -151,6 +157,10 @@ def _mobile_command_payload(data: dict[str, Any]) -> dict[str, Any]:
     raw_images = source_payload.get("images") or data.get("images")
     if isinstance(raw_images, list):
         payload["images"] = [str(image) for image in raw_images[:5] if isinstance(image, str)]
+    raw_tier = source_payload.get("tier") or data.get("tier")
+    tier = str(raw_tier or "").strip()
+    if tier:
+        payload["tier"] = tier[:32]
     return payload
 
 

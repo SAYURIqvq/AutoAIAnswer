@@ -16,6 +16,7 @@ from ai_screenshot_assistant.ui.native_capture import (
 )
 
 _IS_MAC = sys.platform == "darwin"
+MAX_OVERLAY_CHARS = 4000
 
 
 class StreamingOverlay(QWidget):
@@ -112,14 +113,22 @@ class StreamingOverlay(QWidget):
 
     def append_delta(self, delta: str) -> None:
         self._buffer += delta
+        if len(self._buffer) > MAX_OVERLAY_CHARS:
+            self._buffer = self._buffer[-MAX_OVERLAY_CHARS:]
         self.label.setText(self._buffer)
         self.adjustSize()
         if _IS_MAC:
             self._schedule_native_flags()
 
     def complete_stream(self, text: str) -> None:
-        self._buffer = text
-        self.label.setText(text or "分析完成")
+        self._buffer = (text or "")[-MAX_OVERLAY_CHARS:]
+        self.label.setText(self._buffer or "分析完成")
+        self.adjustSize()
+        self._schedule_native_flags()
+
+    def clear(self) -> None:
+        self._buffer = ""
+        self.label.setText("")
         self.adjustSize()
         self._schedule_native_flags()
 

@@ -12,6 +12,12 @@
         <h1>AI 搜题助手</h1>
         <span class="status" id="status">连接中</span>
       </header>
+      <div class="model-tiers" role="radiogroup" aria-label="模型档位">
+        <button type="button" class="tier-button" id="tier-good" data-tier="good">好</button>
+        <button type="button" class="tier-button" id="tier-medium" data-tier="medium">中等</button>
+        <button type="button" class="tier-button" id="tier-simple" data-tier="simple">简单</button>
+      </div>
+      <p class="model-hint" id="model-hint">好档使用通义千问 VL 235B Thinking</p>
       <div class="selection-status waiting" id="selection-status">
         <span class="status-dot" aria-hidden="true"></span>
         <span id="selection-message">左键长按 2 秒框选，或右键长按 2 秒全屏</span>
@@ -21,7 +27,7 @@
       <section class="chatbot" aria-label="截图对话">
         <div class="chat-header">
           <span>截图对话</span>
-          <span class="chat-subtitle">先截图收集，再统一发送</span>
+          <button class="clear-chat" id="clear-chat-button" type="button">清空聊天</button>
         </div>
         <div class="chat-list" id="chat-list" aria-live="polite">
           <div class="empty-chat">可以只截图不输入文字；多张截图会和可选文字一起发送给 AI。</div>

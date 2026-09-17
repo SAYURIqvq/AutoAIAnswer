@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import base64
+import gc
+import threading
 import time
 from pathlib import Path
 from typing import Any, Protocol
@@ -9,6 +11,7 @@ from uuid import uuid4
 from ai_screenshot_assistant.ai.client import parse_ai_result, prepare_image_for_ai
 from ai_screenshot_assistant.ai.formatting import format_ai_output
 from ai_screenshot_assistant.config import Settings, settings
+from ai_screenshot_assistant.core.conversation import cap_conversation_memory
 from ai_screenshot_assistant.core.messages import Event
 from ai_screenshot_assistant.capture.roi import Roi, RoiStateMachine
 
@@ -67,6 +70,7 @@ class AssistantWorkflow:
         self.on_stream_completed = lambda text: None
         self.on_stream_error = lambda message: None
         self.mobile_conversation: list[dict[str, str]] = []
+        self._analyze_lock = threading.Lock()
 
     def start_capture(self) -> None:
         self.roi.start()
@@ -186,6 +190,28 @@ class AssistantWorkflow:
             use_conversation=use_conversation,
         )
 
+    def clear_conversation(self) -> dict[str, Any]:
+        released_turns = len(self.mobile_conversation)
+        self.mobile_conversation = []
+        gc.collect()
+        payload = {"released_turns": released_turns}
+        self._publish("conversation.cleared", uuid4().hex, payload)
+        self.on_status("对话记录已清空")
+        return payload
+
+    def set_model_tier(self, tier: str) -> dict[str, Any]:
+        client = self.ai_client
+        apply_tier = getattr(client, "apply_model_tier", None)
+        if not callable(apply_tier):
+            payload = {"tier": tier, "provider": "unknown", "model": "", "display_name": str(tier)}
+            self._publish("model.changed", uuid4().hex, payload)
+            return payload
+        choice = apply_tier(tier)
+        payload = choice.to_payload() if hasattr(choice, "to_payload") else {"tier": str(tier)}
+        self._publish("model.changed", uuid4().hex, payload)
+        self.on_status(f"模型档位：{payload.get('display_name') or payload.get('tier')}")
+        return payload
+
     def _debug_path(self) -> Path | None:
         return Path("debug/image.png") if self.settings.save_debug_image else None
 
@@ -216,16 +242,21 @@ class AssistantWorkflow:
         user_text: str | None = None,
         use_conversation: bool = False,
     ) -> None:
+        if not self._analyze_lock.acquire(blocking=False):
+            self._fail("上一题仍在分析，请稍后再试", request_id=request_id)
+            return
         try:
             self._publish_selection_status("analyzing", "截图成功，AI 正在分析全部题目")
             self.on_stream_started()
             self._publish("answer.started", request_id, started_payload)
             chunks: list[str] = []
-            conversation = list(self.mobile_conversation) if use_conversation else None
+            conversation = cap_conversation_memory(self.mobile_conversation) if use_conversation else None
             if hasattr(self.ai_client, "analyze_images_stream"):
                 stream = self.ai_client.analyze_images_stream(png_images, user_text=user_text, conversation=conversation)
-            else:
+            elif png_images:
                 stream = self.ai_client.analyze_image_stream(png_images[0], user_text=user_text, conversation=conversation)
+            else:
+                raise RuntimeError("当前 AI 客户端不支持无图追问")
             for delta in stream:
                 chunks.append(delta)
                 self.on_stream_delta(delta)
@@ -252,6 +283,8 @@ class AssistantWorkflow:
             self._publish_selection_status("completed", "答案已生成，可以继续框选或全屏截题")
         except Exception as exc:
             self._fail(str(exc), request_id=request_id)
+        finally:
+            self._analyze_lock.release()
 
     def _remember_mobile_turn(self, user_text: str, assistant_text: str) -> None:
         self.mobile_conversation.extend(
@@ -260,7 +293,7 @@ class AssistantWorkflow:
                 {"role": "assistant", "content": assistant_text},
             ]
         )
-        self.mobile_conversation = self.mobile_conversation[-12:]
+        self.mobile_conversation = cap_conversation_memory(self.mobile_conversation)
 
     def _publish(self, event_type: str, request_id: str, payload: dict) -> None:
         event = Event(type=event_type, session_id=self.session_id, request_id=request_id, payload=payload)

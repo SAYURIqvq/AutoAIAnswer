@@ -5,13 +5,15 @@ import io
 import json
 import re
 from collections.abc import Callable, Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 import requests
 from PIL import Image, UnidentifiedImageError
 
+from ai_screenshot_assistant.ai.models import DEFAULT_MODEL_TIER, ModelChoice, resolve_model_choice
 from ai_screenshot_assistant.ai.prompt import VISION_PROMPT
+from ai_screenshot_assistant.core.conversation import cap_conversation_memory
 
 _QUESTION_HEADING = re.compile(r"【第\d+题】")
 AI_IMAGE_MAX_SIDE = 1400
@@ -160,7 +162,7 @@ class VisionClient:
                 }
             ],
         }
-        if "openrouter.ai" in self.provider.base_url:
+        if "openrouter.ai" in self.provider.base_url and "thinking" not in self.provider.model.lower():
             payload["reasoning_effort"] = "none"
         headers = {
             "Authorization": f"Bearer {self.provider.api_key}",
@@ -251,24 +253,25 @@ _prepare_image_for_ai = prepare_image_for_ai
 
 def _format_conversation(conversation: list[dict[str, str]]) -> str:
     lines: list[str] = []
-    for item in conversation[-12:]:
+    for item in cap_conversation_memory(conversation):
         role = item.get("role")
         content = str(item.get("content") or "").strip()
         if not content:
             continue
         label = "用户" if role == "user" else "AI"
-        lines.append(f"{label}：{content[:2000]}")
+        lines.append(f"{label}：{content}")
     return "\n".join(lines)
 
 
 class FailoverVisionClient:
-    """Uses whichever Key is configured. If both exist, DeepSeek is first and 402 fails over."""
+    """Routes Chinese vision models by tier. DeepSeek flash is simple; Qwen VL is good/medium."""
 
     def __init__(
         self,
         deepseek: ProviderConfig,
         openrouter: ProviderConfig,
         on_provider_changed: Callable[[str], None] | None = None,
+        model_tier: str = DEFAULT_MODEL_TIER,
     ) -> None:
         self.deepseek = VisionClient(deepseek)
         self.openrouter = VisionClient(openrouter)
@@ -276,6 +279,7 @@ class FailoverVisionClient:
         self._deepseek_has_key = self._has_key(self.deepseek)
         self._openrouter_has_key = self._has_key(self.openrouter)
         self.current_provider = self._initial_provider()
+        self.model_choice = self.apply_model_tier(model_tier)
 
     @staticmethod
     def _has_key(client: VisionClient) -> bool:
@@ -301,6 +305,34 @@ class FailoverVisionClient:
         if self._openrouter_has_key:
             return "openrouter"
         return "none"
+
+    def current_model_id(self) -> str:
+        if self.current_provider == "openrouter":
+            provider = getattr(self.openrouter, "provider", None)
+        elif self.current_provider == "deepseek":
+            provider = getattr(self.deepseek, "provider", None)
+        else:
+            provider = None
+        return str(getattr(provider, "model", "") or "")
+
+    def apply_model_tier(self, tier: str, *, notify: bool = False) -> ModelChoice:
+        choice = resolve_model_choice(
+            tier,
+            has_deepseek=self._deepseek_has_key,
+            has_openrouter=self._openrouter_has_key,
+        )
+        deepseek_provider = getattr(self.deepseek, "provider", None)
+        openrouter_provider = getattr(self.openrouter, "provider", None)
+        if isinstance(deepseek_provider, ProviderConfig):
+            self.deepseek = VisionClient(replace(deepseek_provider, model=choice.deepseek_model))
+        if isinstance(openrouter_provider, ProviderConfig):
+            self.openrouter = VisionClient(replace(openrouter_provider, model=choice.openrouter_model))
+        previous = self.current_provider
+        self.current_provider = choice.provider
+        self.model_choice = choice
+        if notify and choice.provider not in {previous, "none"}:
+            self.on_provider_changed(choice.provider)
+        return choice
 
     def analyze_image_stream(
         self,

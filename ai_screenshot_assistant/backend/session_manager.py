@@ -8,7 +8,9 @@ from uuid import uuid4
 
 from fastapi import WebSocket
 
-MAX_SESSION_EVENTS = 300
+MAX_SESSION_EVENTS = 80
+MAX_STORED_TEXT_CHARS = 4000
+SKIP_PERSIST_EVENT_TYPES = frozenset({"answer.delta"})
 
 
 @dataclass
@@ -26,6 +28,29 @@ class Session:
     @property
     def paired(self) -> bool:
         return self.mobile is not None
+
+
+def persistable_event(event: dict[str, Any]) -> dict[str, Any] | None:
+    event_type = str(event.get("type") or "")
+    if event_type in SKIP_PERSIST_EVENT_TYPES:
+        return None
+    stored = dict(event)
+    payload = stored.get("payload")
+    if not isinstance(payload, dict):
+        return stored
+    payload = dict(payload)
+    if event_type == "screenshot.captured":
+        payload.pop("image", None)
+        payload["image_omitted"] = True
+    result = payload.get("result")
+    if isinstance(result, dict):
+        result = dict(result)
+        text = str(result.get("text") or "")
+        if len(text) > MAX_STORED_TEXT_CHARS:
+            result["text"] = text[:MAX_STORED_TEXT_CHARS]
+        payload["result"] = result
+    stored["payload"] = payload
+    return stored
 
 
 class SessionManager:
@@ -61,13 +86,18 @@ class SessionManager:
         enriched = dict(event)
         enriched["event_id"] = session.next_event_id
         session.next_event_id += 1
-        session.events.append(enriched)
-        if len(session.events) > MAX_SESSION_EVENTS:
-            session.events = session.events[-MAX_SESSION_EVENTS:]
+        stored = persistable_event(enriched)
+        if stored is not None:
+            session.events.append(stored)
+            if len(session.events) > MAX_SESSION_EVENTS:
+                session.events = session.events[-MAX_SESSION_EVENTS:]
         return enriched
 
     def since(self, session: Session, last_event_id: int) -> list[dict[str, Any]]:
         return [event for event in session.events if int(event.get("event_id", 0)) > last_event_id]
+
+    def clear_events(self, session: Session) -> None:
+        session.events.clear()
 
 
 manager = SessionManager()

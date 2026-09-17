@@ -101,6 +101,42 @@ def test_openrouter_request_disables_reasoning_and_uses_low_latency_stream(monke
     assert captured["iter_lines_kwargs"] == {"chunk_size": 1, "decode_unicode": False}
 
 
+def test_thinking_model_keeps_reasoning_enabled(monkeypatch) -> None:
+    captured = {}
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def raise_for_status(self):
+            return None
+
+        def iter_lines(self, **kwargs):
+            yield b'data: {"choices":[{"delta":{"content":"A"}}]}'
+            yield b"data: [DONE]"
+
+    def fake_post(url, **kwargs):
+        captured["json"] = kwargs["json"]
+        return Response()
+
+    monkeypatch.setattr("ai_screenshot_assistant.ai.client.requests.post", fake_post)
+    client = OpenRouterVisionClient(
+        ProviderConfig(
+            name="OpenRouter",
+            api_key="key",
+            base_url="https://openrouter.ai/api/v1",
+            model="qwen/qwen3-vl-235b-a22b-thinking",
+        )
+    )
+
+    assert list(client.analyze_image_stream(b"png")) == ["A"]
+    assert "reasoning_effort" not in captured["json"]
+    assert captured["json"]["model"] == "qwen/qwen3-vl-235b-a22b-thinking"
+
+
 def test_large_images_are_resized_and_compressed_for_ai() -> None:
     source = Image.new("RGB", (2200, 1600), color=(245, 245, 245))
     source_buffer = io.BytesIO()
