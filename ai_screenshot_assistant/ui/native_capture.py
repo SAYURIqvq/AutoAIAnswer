@@ -10,12 +10,10 @@ if sys.platform == "win32":
         apply_capture_exclusion,
         hwnd_from_widget,
         is_excluded_from_capture,
+        keep_overlay_fronted,
         set_color_key_opacity,
         set_no_activate,
     )
-
-    def keep_overlay_fronted(target: object) -> None:
-        return
 elif sys.platform == "darwin":
     from ai_screenshot_assistant.ui.macos_capture import (
         CHROMA_KEY_RGB,

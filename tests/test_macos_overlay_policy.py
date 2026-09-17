@@ -65,6 +65,59 @@ def test_macos_capture_never_sets_status_level_on_windows() -> None:
     assert "setLevel:\", c_long(NSStatusWindowLevel)" not in source
     assert "拒绝修改主窗口" in source
     assert "overlay_target_is_safe" in source
+    assert "setHidesOnDeactivate:\", c_ubyte(1)" not in source
+    assert "orderWindow:relativeTo:" in source
+    assert '"orderFrontRegardless"' not in source
+
+
+def test_stream_started_does_not_show_or_raise_overlay() -> None:
+    from ai_screenshot_assistant.ui.main_window import MainWindow
+
+    source = inspect.getsource(MainWindow._on_stream_started)
+    assert "start_stream" in source
+    assert "self.overlay.show()" not in source
+    assert "self.overlay.raise_()" not in source
+
+
+def test_main_window_only_shows_overlay_from_visibility_toggle() -> None:
+    source = (ROOT / "ai_screenshot_assistant" / "ui" / "main_window.py").read_text(encoding="utf-8")
+    assert source.count("self.overlay.show()") == 1
+    assert "def set_overlay_visible" in source
+    assert "self.overlay.raise_()" not in source
+
+
+def test_hidden_overlay_stream_does_not_front(qapp, monkeypatch) -> None:
+    import ai_screenshot_assistant.ui.streaming_overlay as overlay_mod
+
+    monkeypatch.setattr(overlay_mod, "_IS_MAC", True)
+    pinned: list[object] = []
+    monkeypatch.setattr(overlay_mod, "keep_overlay_fronted", pinned.append)
+    monkeypatch.setattr(StreamingOverlay, "_apply_native_flags", lambda self: pinned.append("flags"))
+
+    overlay = StreamingOverlay(QSettings())
+    overlay.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
+    overlay.start_stream()
+    overlay.append_delta("答案")
+    overlay.complete_stream("完成")
+    overlay.raise_()
+    assert pinned == []
+    assert overlay._keep_alive is False
+    overlay.close()
+    overlay.deleteLater()
+
+
+def test_visible_overlay_stream_pins_without_qt_raise(qapp, monkeypatch) -> None:
+    import ai_screenshot_assistant.ui.streaming_overlay as overlay_mod
+
+    monkeypatch.setattr(overlay_mod, "_IS_MAC", True)
+    monkeypatch.setattr(StreamingOverlay, "_apply_native_flags", lambda self: None)
+    overlay = StreamingOverlay(QSettings())
+    overlay.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
+    overlay.show()
+    source = inspect.getsource(StreamingOverlay.raise_)
+    assert "super().raise_()" not in source
+    overlay.close()
+    overlay.deleteLater()
 
 
 def test_app_state_handler_pins_overlay_without_raising_app() -> None:

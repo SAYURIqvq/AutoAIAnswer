@@ -19,7 +19,9 @@ WS_EX_TOOLWINDOW = 0x00000080
 SWP_NOSIZE = 0x0001
 SWP_NOMOVE = 0x0002
 SWP_NOZORDER = 0x0004
+SWP_NOACTIVATE = 0x0010
 SWP_FRAMECHANGED = 0x0020
+HWND_TOPMOST = -1
 
 LWA_COLORKEY = 0x00000001
 LWA_ALPHA = 0x00000002
@@ -36,6 +38,9 @@ if sys.platform != "win32":
         return False
 
     def set_click_through(hwnd: int, enabled: bool) -> None:
+        return
+
+    def keep_overlay_fronted(target: object) -> None:
         return
 
     def set_no_activate(hwnd: int, enabled: bool = True) -> None:
@@ -157,6 +162,20 @@ else:
 
     def set_no_activate(hwnd: int, enabled: bool = True) -> None:
         _set_exstyle_flag(hwnd, WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW, enabled)
+
+    def keep_overlay_fronted(target: object) -> None:
+        hwnd = hwnd_from_widget(target) if not isinstance(target, int) else target
+        if not hwnd:
+            return
+        user32.SetWindowPos(
+            wintypes.HWND(hwnd),
+            wintypes.HWND(HWND_TOPMOST),
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+        )
 
     def set_color_key_opacity(
         hwnd: int,

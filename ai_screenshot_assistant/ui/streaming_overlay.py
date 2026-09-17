@@ -109,7 +109,7 @@ class StreamingOverlay(QWidget):
         self._buffer = ""
         self.label.setText("分析中…")
         self.adjustSize()
-        self._schedule_native_flags()
+        self._refresh_if_visible()
 
     def append_delta(self, delta: str) -> None:
         self._buffer += delta
@@ -117,26 +117,29 @@ class StreamingOverlay(QWidget):
             self._buffer = self._buffer[-MAX_OVERLAY_CHARS:]
         self.label.setText(self._buffer)
         self.adjustSize()
-        if _IS_MAC:
-            self._schedule_native_flags()
+        self._refresh_if_visible()
 
     def complete_stream(self, text: str) -> None:
         self._buffer = (text or "")[-MAX_OVERLAY_CHARS:]
         self.label.setText(self._buffer or "分析完成")
         self.adjustSize()
-        self._schedule_native_flags()
+        self._refresh_if_visible()
 
     def clear(self) -> None:
         self._buffer = ""
         self.label.setText("")
         self.adjustSize()
-        self._schedule_native_flags()
+        self._refresh_if_visible()
 
     def show_error(self, message: str) -> None:
         self._buffer = ""
         self.label.setText(f"错误：{message}")
         self.adjustSize()
-        self._schedule_native_flags()
+        self._refresh_if_visible()
+
+    def _refresh_if_visible(self) -> None:
+        if self._keep_alive:
+            self._schedule_native_flags()
 
     def show(self) -> None:
         self._keep_alive = True
@@ -162,19 +165,23 @@ class StreamingOverlay(QWidget):
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
-        if _IS_MAC:
+        if self._keep_alive:
             self._native_retry.start(120)
 
     def raise_(self) -> None:
-        super().raise_()
-        self._schedule_native_flags()
+        # QWidget.raise_() activates the whole app and pops the main console.
+        self._refresh_if_visible()
 
     def _schedule_native_flags(self) -> None:
+        if not self._keep_alive:
+            return
         self._apply_native_flags()
         # AppKit may reset sharingType during orderFront/resize; pin it again shortly after.
         self._native_retry.start(120)
 
     def _apply_native_flags(self) -> None:
+        if not self._keep_alive:
+            return
         if _IS_MAC:
             self.setWindowOpacity(self._opacity_percent / 100.0)
             apply_capture_exclusion(self, True)
