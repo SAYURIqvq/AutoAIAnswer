@@ -35,7 +35,10 @@
         <div class="preview-panel" id="preview-panel" aria-live="polite">
           <div class="preview-toolbar">
             <div class="preview-count" id="preview-count">已截图：0张</div>
-            <button class="save-album" id="save-album-button" type="button" disabled>保存到相册</button>
+            <div class="preview-actions">
+              <button class="save-album ghost" id="select-all-album" type="button">全选</button>
+              <button class="save-album" id="save-album-button" type="button" disabled>保存到相册</button>
+            </div>
           </div>
           <div class="preview-list" id="preview-list"></div>
         </div>
@@ -50,6 +53,13 @@
         </div>
       </section>
     </main>
+    <div class="album-sheet" id="album-sheet" hidden>
+      <div class="album-sheet-card">
+        <p>长按图片，选择「添加到照片 / 存储图像」，不要选存储到文件。</p>
+        <div class="album-sheet-images" id="album-sheet-images"></div>
+        <button class="save-album" id="album-sheet-close" type="button">完成</button>
+      </div>
+    </div>
     <script>window.SESSION_ID = "__SESSION_ID__";</script>
     <script src="/static/app.js"></script>
   </body>
