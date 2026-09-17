@@ -32,6 +32,8 @@ if sys.platform != "win32":
         return 0
 
     def apply_capture_exclusion(hwnd: int, enabled: bool = True) -> tuple[bool, str]:
+        if not hwnd:
+            return False, "窗口句柄尚未创建"
         return False, "仅 Windows 支持捕获排除"
 
     def is_excluded_from_capture(hwnd: int) -> bool:
