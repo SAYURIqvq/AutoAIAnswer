@@ -103,6 +103,7 @@ class AssistantWorkflow:
         started_at = time.perf_counter()
         try:
             png = self.capture.capture_png(roi, debug_path=self._debug_path())
+            self._publish_captured_screenshot(png, request_id, add_to_buffer=False)
             self._analyze_png(png, request_id, started_at, {"roi": roi.to_mss_monitor()})
         except Exception as exc:
             self._fail(str(exc), request_id=request_id)
@@ -130,6 +131,7 @@ class AssistantWorkflow:
             started_payload["chat"] = True
         try:
             png = self.capture.capture_fullscreen_png(x, y, debug_path=self._debug_path())
+            self._publish_captured_screenshot(png, request_id, add_to_buffer=False)
             self._analyze_png(
                 png,
                 request_id,
@@ -145,18 +147,8 @@ class AssistantWorkflow:
         request_id = uuid4().hex
         try:
             png = self.capture.capture_fullscreen_png(x, y, debug_path=self._debug_path())
-            image_bytes, mime_type = prepare_image_for_ai(png)
-            image_b64 = base64.b64encode(image_bytes).decode("ascii")
-            self._publish(
-                "screenshot.captured",
-                request_id,
-                {
-                    "image": f"data:{mime_type};base64,{image_b64}",
-                    "size": len(image_bytes),
-                    "original_size": len(png),
-                },
-            )
-            self._publish_selection_status("completed", "截图已添加到手机端缓冲区，可继续截图或发送")
+            self._publish_captured_screenshot(png, request_id, add_to_buffer=True)
+            self._publish_selection_status("completed", "截图已添加到手机端，可保存到相册或发送给 AI")
         except Exception as exc:
             self._fail(str(exc), request_id=request_id)
 
@@ -214,6 +206,27 @@ class AssistantWorkflow:
 
     def _debug_path(self) -> Path | None:
         return Path("debug/image.png") if self.settings.save_debug_image else None
+
+    def _publish_captured_screenshot(
+        self,
+        png: bytes,
+        request_id: str,
+        *,
+        add_to_buffer: bool,
+    ) -> None:
+        image_bytes, mime_type = prepare_image_for_ai(png)
+        image_b64 = base64.b64encode(image_bytes).decode("ascii")
+        self._publish(
+            "screenshot.captured",
+            request_id,
+            {
+                "image": f"data:{mime_type};base64,{image_b64}",
+                "size": len(image_bytes),
+                "original_size": len(png),
+                "add_to_buffer": add_to_buffer,
+                "save_to_album": True,
+            },
+        )
 
     def _analyze_png(
         self,

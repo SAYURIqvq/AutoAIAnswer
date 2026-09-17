@@ -103,6 +103,7 @@ def test_workflow_streams_and_completes() -> None:
     workflow.process_roi(Roi(left=1, top=2, width=30, height=40))
 
     assert [event["type"] for event in publisher.events] == [
+        "screenshot.captured",
         "selection.status",
         "answer.started",
         "answer.delta",
@@ -111,6 +112,8 @@ def test_workflow_streams_and_completes() -> None:
         "answer.completed",
         "selection.status",
     ]
+    assert publisher.events[0]["payload"]["save_to_album"] is True
+    assert publisher.events[0]["payload"]["add_to_buffer"] is False
     assert result_holder["answer"] == "B"
     assert result_holder["reason"] == "TCP reliable"
     assert stream_states == [
@@ -159,12 +162,11 @@ def test_workflow_fullscreen_streams_and_completes() -> None:
     assert capture.fullscreen_args == (120, 240)
     assert workflow.roi.p1 is None
     assert result_holder["answer"] == "B"
-    assert [event["type"] for event in publisher.events[:3]] == [
-        "selection.status",
-        "selection.status",
-        "answer.started",
-    ]
-    assert publisher.events[2]["payload"] == {"mode": "fullscreen"}
+    screenshot_events = [event for event in publisher.events if event["type"] == "screenshot.captured"]
+    started = next(event for event in publisher.events if event["type"] == "answer.started")
+    assert screenshot_events[0]["payload"]["save_to_album"] is True
+    assert screenshot_events[0]["payload"]["add_to_buffer"] is False
+    assert started["payload"] == {"mode": "fullscreen"}
 
 
 def test_workflow_fullscreen_uses_supplied_request_id() -> None:
@@ -214,7 +216,8 @@ def test_workflow_fullscreen_question_uses_conversation_context() -> None:
             "content": '{"answer":"B","reason":"TCP reliable","confidence":"0.95"}',
         },
     ]
-    assert publisher.events[2]["payload"] == {
+    started = next(event for event in publisher.events if event["type"] == "answer.started")
+    assert started["payload"] == {
         "mode": "fullscreen",
         "has_user_text": True,
         "conversation_turns": 2,
@@ -237,6 +240,8 @@ def test_mobile_fullscreen_preview_publishes_screenshot() -> None:
     assert publisher.events[0]["type"] == "screenshot.captured"
     assert publisher.events[0]["payload"]["image"].startswith("data:image/png;base64,")
     assert publisher.events[0]["payload"]["size"] == len(b"fullpng")
+    assert publisher.events[0]["payload"]["save_to_album"] is True
+    assert publisher.events[0]["payload"]["add_to_buffer"] is True
 
 
 def test_mobile_fullscreen_preview_compresses_large_screenshot() -> None:
