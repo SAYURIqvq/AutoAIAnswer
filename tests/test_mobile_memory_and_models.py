@@ -57,6 +57,10 @@ def test_desktop_main_window_uses_quiet_zone_qr_and_memory_caps() -> None:
 
     assert "pair_qr_png_bytes" in source
     assert "KeepAspectRatio" in source
+    assert "QScrollArea" in source
+    assert "SetMinimumSize" in source
+    assert "FastTransformation" in source
+    assert "addWidget(self.logs, 1)" not in source
     assert "setMaximumBlockCount(80)" in source
     assert "command.clear_conversation" in source
     assert "command.set_model_tier" in source
