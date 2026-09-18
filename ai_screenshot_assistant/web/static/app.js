@@ -192,6 +192,16 @@
     });
   }
 
+  function removeSentChatScreenshots(sentItems) {
+    const sentIds = {};
+    sentItems.forEach(function (item) {
+      sentIds[item.id] = true;
+    });
+    albumItems = albumItems.filter(function (item) {
+      return !sentIds[item.id];
+    });
+  }
+
   function selectedAlbumItems() {
     return albumItems.filter(function (item) {
       return item.selected;
@@ -720,9 +730,7 @@
       }
     }));
     questionInput.value = "";
-    albumItems.forEach(function (item) {
-      item.forChat = false;
-    });
+    removeSentChatScreenshots(chatImages);
     renderPreviewList();
     setTimeout(function () {
       if (socket && socket.readyState === WebSocket.OPEN) {
