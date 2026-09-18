@@ -1,3 +1,4 @@
+import base64
 import io
 from dataclasses import replace
 
@@ -259,6 +260,9 @@ def test_mobile_fullscreen_preview_compresses_large_screenshot() -> None:
     payload = publisher.events[0]["payload"]
     assert payload["image"].startswith("data:image/jpeg;base64,")
     assert payload["size"] < payload["original_size"]
+    image_b64 = payload["image"].split(",", 1)[1]
+    saved = Image.open(io.BytesIO(base64.b64decode(image_b64)))
+    assert max(saved.size) == 2200
 
 
 def test_mobile_multi_screenshot_submission_uses_all_images() -> None:

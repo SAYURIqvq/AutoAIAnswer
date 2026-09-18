@@ -49,6 +49,14 @@ def test_fit_image_shrinks_long_side() -> None:
     assert fitted.size[0] > fitted.size[1]
 
 
+def test_fit_image_keeps_retina_width_by_default() -> None:
+    image = Image.new("RGB", (3024, 1964), color=(0, 0, 0))
+
+    fitted = fit_image(image)
+
+    assert max(fitted.size) == 2880
+
+
 def test_scale_roi_for_retina() -> None:
     roi = Roi(left=100, top=80, width=200, height=120)
 

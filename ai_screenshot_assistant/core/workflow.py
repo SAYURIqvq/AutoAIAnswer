@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Protocol
 from uuid import uuid4
 
-from ai_screenshot_assistant.ai.client import parse_ai_result, prepare_image_for_ai
+from ai_screenshot_assistant.ai.client import parse_ai_result, prepare_image_for_album
 from ai_screenshot_assistant.ai.formatting import format_ai_output
 from ai_screenshot_assistant.config import Settings, settings
 from ai_screenshot_assistant.core.conversation import cap_conversation_memory
@@ -214,7 +214,7 @@ class AssistantWorkflow:
         *,
         add_to_buffer: bool,
     ) -> None:
-        image_bytes, mime_type = prepare_image_for_ai(png)
+        image_bytes, mime_type = prepare_image_for_album(png)
         image_b64 = base64.b64encode(image_bytes).decode("ascii")
         self._publish(
             "screenshot.captured",

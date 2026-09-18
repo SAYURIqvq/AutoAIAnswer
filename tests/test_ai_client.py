@@ -4,9 +4,11 @@ from PIL import Image
 
 from ai_screenshot_assistant.ai.client import (
     AI_IMAGE_MAX_SIDE,
+    ALBUM_IMAGE_MAX_SIDE,
     OpenRouterVisionClient,
     ProviderConfig,
     _prepare_image_for_ai,
+    _prepare_image_for_album,
     parse_ai_result,
 )
 
@@ -147,3 +149,22 @@ def test_large_images_are_resized_and_compressed_for_ai() -> None:
     assert mime_type == "image/jpeg"
     prepared = Image.open(io.BytesIO(image_bytes))
     assert max(prepared.size) == AI_IMAGE_MAX_SIDE
+
+
+def test_album_images_keep_higher_resolution_than_ai() -> None:
+    source = Image.new("RGB", (2200, 1600), color=(245, 245, 245))
+    source_buffer = io.BytesIO()
+    source.save(source_buffer, format="PNG")
+    png = source_buffer.getvalue()
+
+    album_bytes, album_mime = _prepare_image_for_album(png)
+    ai_bytes, ai_mime = _prepare_image_for_ai(png)
+
+    album = Image.open(io.BytesIO(album_bytes))
+    ai_image = Image.open(io.BytesIO(ai_bytes))
+    assert album_mime in {"image/png", "image/jpeg"}
+    assert ai_mime == "image/jpeg"
+    assert max(album.size) == 2200
+    assert max(album.size) <= ALBUM_IMAGE_MAX_SIDE
+    assert max(ai_image.size) == AI_IMAGE_MAX_SIDE
+    assert max(album.size) > max(ai_image.size)

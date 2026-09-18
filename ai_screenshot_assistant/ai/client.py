@@ -19,6 +19,9 @@ _QUESTION_HEADING = re.compile(r"【第\d+题】")
 AI_IMAGE_MAX_SIDE = 1400
 AI_IMAGE_JPEG_QUALITY = 78
 AI_IMAGE_COMPRESS_THRESHOLD_BYTES = 650_000
+ALBUM_IMAGE_MAX_SIDE = 2880
+ALBUM_IMAGE_JPEG_QUALITY = 92
+ALBUM_IMAGE_MAX_BYTES = 2_400_000
 
 
 @dataclass(frozen=True)
@@ -222,33 +225,76 @@ def _build_user_prompt(user_text: str | None, conversation: list[dict[str, str]]
     return "\n\n".join(parts)
 
 
-def prepare_image_for_ai(image_bytes: bytes) -> tuple[bytes, str]:
+def _open_image(image_bytes: bytes) -> Image.Image | None:
     try:
-        image = Image.open(io.BytesIO(image_bytes))
-        width, height = image.size
+        return Image.open(io.BytesIO(image_bytes))
     except (UnidentifiedImageError, OSError, ValueError):
+        return None
+
+
+def _resize_to_max_side(image: Image.Image, max_side: int) -> Image.Image:
+    width, height = image.size
+    longest = max(width, height)
+    if longest <= max_side:
+        return image
+    scale = max_side / longest
+    return image.resize(
+        (max(1, int(width * scale)), max(1, int(height * scale))),
+        Image.Resampling.LANCZOS,
+    )
+
+
+def _encode_jpeg(image: Image.Image, quality: int, *, subsampling: int | None = None) -> bytes:
+    if image.mode not in {"RGB", "L"}:
+        image = image.convert("RGB")
+    buffer = io.BytesIO()
+    options: dict[str, Any] = {"format": "JPEG", "quality": quality, "optimize": True}
+    if subsampling is not None:
+        options["subsampling"] = subsampling
+    image.save(buffer, **options)
+    return buffer.getvalue()
+
+
+def _original_mime(image: Image.Image) -> str:
+    if image.format == "JPEG":
+        return "image/jpeg"
+    return "image/png"
+
+
+def prepare_image_for_ai(image_bytes: bytes) -> tuple[bytes, str]:
+    image = _open_image(image_bytes)
+    if image is None:
         return image_bytes, "image/png"
 
-    longest = max(width, height)
+    longest = max(image.size)
     needs_resize = longest > AI_IMAGE_MAX_SIDE
     needs_compress = len(image_bytes) > AI_IMAGE_COMPRESS_THRESHOLD_BYTES or needs_resize
     if not needs_compress:
         return image_bytes, "image/png"
 
-    if needs_resize:
-        scale = AI_IMAGE_MAX_SIDE / longest
-        image = image.resize(
-            (max(1, int(width * scale)), max(1, int(height * scale))),
-            Image.Resampling.LANCZOS,
-        )
-    if image.mode not in {"RGB", "L"}:
-        image = image.convert("RGB")
-    buffer = io.BytesIO()
-    image.save(buffer, format="JPEG", quality=AI_IMAGE_JPEG_QUALITY, optimize=True)
-    return buffer.getvalue(), "image/jpeg"
+    return _encode_jpeg(_resize_to_max_side(image, AI_IMAGE_MAX_SIDE), AI_IMAGE_JPEG_QUALITY), "image/jpeg"
+
+
+def prepare_image_for_album(image_bytes: bytes) -> tuple[bytes, str]:
+    image = _open_image(image_bytes)
+    if image is None:
+        return image_bytes, "image/png"
+
+    longest = max(image.size)
+    if longest <= ALBUM_IMAGE_MAX_SIDE and len(image_bytes) <= ALBUM_IMAGE_MAX_BYTES:
+        return image_bytes, _original_mime(image)
+
+    image = _resize_to_max_side(image, ALBUM_IMAGE_MAX_SIDE)
+    quality = ALBUM_IMAGE_JPEG_QUALITY
+    encoded = _encode_jpeg(image, quality, subsampling=0)
+    while len(encoded) > ALBUM_IMAGE_MAX_BYTES and quality > 80:
+        quality -= 6
+        encoded = _encode_jpeg(image, quality, subsampling=0)
+    return encoded, "image/jpeg"
 
 
 _prepare_image_for_ai = prepare_image_for_ai
+_prepare_image_for_album = prepare_image_for_album
 
 
 def _format_conversation(conversation: list[dict[str, str]]) -> str:
