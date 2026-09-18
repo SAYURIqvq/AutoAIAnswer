@@ -8,7 +8,7 @@ from PIL import Image
 from ai_screenshot_assistant.capture.roi import Roi
 from ai_screenshot_assistant.utils.display import scale_roi, screen_scale_at
 
-FULLSCREEN_MAX_SIDE = 2048
+FULLSCREEN_MAX_SIDE = 2880
 
 
 def point_in_monitor(monitor: dict[str, int], x: int, y: int) -> bool:
