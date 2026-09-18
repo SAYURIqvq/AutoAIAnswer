@@ -58,11 +58,23 @@ def test_mobile_page_exposes_model_tiers_and_clear_chat() -> None:
     assert "add_to_buffer" in js
     assert "conversation.cleared" in js
     assert "model.changed" in js
+    assert "function removeSentChatScreenshots" in js
     assert ".tier-button" in css
     assert ".clear-chat" in css
     assert ".save-album" in css
     assert ".preview-check" in css
     assert ".album-sheet" in css
+
+
+def test_mobile_send_removes_chat_attachments_from_preview() -> None:
+    js = (STATIC / "app.js").read_text(encoding="utf-8")
+    ask_chunk = js.split("askButton.addEventListener", 1)[1]
+
+    assert "removeSentChatScreenshots(chatImages)" in ask_chunk
+    assert "item.forChat = false" not in ask_chunk
+    assert 'questionInput.value = ""' in ask_chunk
+    assert "function removeSentChatScreenshots" in js
+    assert "return !sentIds[item.id]" in js
 
 
 def test_desktop_main_window_uses_quiet_zone_qr_and_memory_caps() -> None:
