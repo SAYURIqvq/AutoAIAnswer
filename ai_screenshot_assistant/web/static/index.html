@@ -12,12 +12,16 @@
         <h1>AI 搜题助手</h1>
         <span class="status" id="status">连接中</span>
       </header>
-      <div class="model-tiers" role="radiogroup" aria-label="模型档位">
-        <button type="button" class="tier-button" id="tier-good" data-tier="good">好</button>
-        <button type="button" class="tier-button" id="tier-medium" data-tier="medium">中等</button>
-        <button type="button" class="tier-button" id="tier-simple" data-tier="simple">简单</button>
+      <div class="model-routes">
+        <label class="model-label" for="model-route">模型</label>
+        <select id="model-route" aria-label="模型">
+          <option value="doubao-seed-vision">豆包 · doubao-seed-1-6-vision-250815</option>
+          <option value="openrouter-qwen-235b">OpenRouter · qwen/qwen3-vl-235b-a22b-thinking</option>
+          <option value="openrouter-qwen-32b">OpenRouter · qwen/qwen3-vl-32b-instruct</option>
+          <option value="deepseek-flash">DeepSeek · deepseek-flash</option>
+        </select>
       </div>
-      <p class="model-hint" id="model-hint">好档使用通义千问 VL 235B Thinking</p>
+      <p class="model-hint" id="model-hint">OpenRouter / qwen/qwen3-vl-235b-a22b-thinking</p>
       <div class="selection-status waiting" id="selection-status">
         <span class="status-dot" aria-hidden="true"></span>
         <span id="selection-message">左键长按 2 秒框选，或右键长按 2 秒全屏</span>

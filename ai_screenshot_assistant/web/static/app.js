@@ -20,6 +20,7 @@
   const albumSheetClose = document.getElementById("album-sheet-close");
   const outputEl = document.getElementById("output");
   const modelHint = document.getElementById("model-hint");
+  const modelRoute = document.getElementById("model-route");
   const cursorKey = `lastEventId:${sessionId || "missing"}`;
   const modelTierKey = `modelTier:${sessionId || "missing"}`;
   let lastEventId = Number(localStorage.getItem(cursorKey) || 0);
@@ -34,16 +35,46 @@
   let albumItems = [];
   let nextAlbumId = 1;
   let requestCounter = 0;
-  let currentTier = localStorage.getItem(modelTierKey) || "good";
+  const routeAliases = {
+    good: "openrouter-qwen-235b",
+    high: "openrouter-qwen-235b",
+    best: "openrouter-qwen-235b",
+    "好": "openrouter-qwen-235b",
+    medium: "openrouter-qwen-32b",
+    mid: "openrouter-qwen-32b",
+    "中等": "openrouter-qwen-32b",
+    simple: "deepseek-flash",
+    low: "deepseek-flash",
+    easy: "deepseek-flash",
+    "简单": "deepseek-flash",
+    doubao: "doubao-seed-vision"
+  };
+  const knownRoutes = {
+    "doubao-seed-vision": "豆包 / doubao-seed-1-6-vision-250815",
+    "openrouter-qwen-235b": "OpenRouter / qwen/qwen3-vl-235b-a22b-thinking",
+    "openrouter-qwen-32b": "OpenRouter / qwen/qwen3-vl-32b-instruct",
+    "deepseek-flash": "DeepSeek / deepseek-flash"
+  };
+  let currentTier = normalizeRoute(localStorage.getItem(modelTierKey) || "openrouter-qwen-235b");
   const maxScreenshots = 5;
   const maxAlbumItems = 12;
   const maxChatMessages = 40;
   const maxRenderChars = 40000;
-  const tierHints = {
-    good: "好档：通义千问 VL 235B Thinking",
-    medium: "中等档：通义千问 VL 32B",
-    simple: "简单档：DeepSeek Flash 或通义千问 VL 8B"
-  };
+
+  function normalizeRoute(value) {
+    const key = String(value || "").trim();
+    if (knownRoutes[key]) {
+      return key;
+    }
+    if (routeAliases[key]) {
+      return routeAliases[key];
+    }
+    const lowered = key.toLowerCase();
+    if (knownRoutes[lowered]) {
+      return lowered;
+    }
+    return routeAliases[lowered] || "openrouter-qwen-235b";
+  }
 
   function nextRequestId(prefix) {
     requestCounter += 1;
@@ -360,13 +391,13 @@
   }
 
   function setActiveTier(tier, persist) {
-    const next = ["good", "medium", "simple"].indexOf(tier) >= 0 ? tier : "good";
+    const next = normalizeRoute(tier);
     currentTier = next;
-    document.querySelectorAll(".tier-button").forEach(function (button) {
-      button.classList.toggle("active", button.getAttribute("data-tier") === next);
-    });
+    if (modelRoute && modelRoute.value !== next) {
+      modelRoute.value = next;
+    }
     if (modelHint) {
-      modelHint.textContent = tierHints[next] || "";
+      modelHint.textContent = knownRoutes[next] || next;
     }
     if (persist !== false) {
       localStorage.setItem(modelTierKey, next);
@@ -377,9 +408,10 @@
     if (!socket || socket.readyState !== WebSocket.OPEN) {
       return;
     }
+    const route = normalizeRoute(tier);
     socket.send(JSON.stringify({
       type: "command.set_model_tier",
-      payload: { tier: tier }
+      payload: { tier: route, route: route }
     }));
   }
 
@@ -589,7 +621,7 @@
     } else if (event.type === "conversation.cleared") {
       resetChatUi();
     } else if (event.type === "model.changed") {
-      setActiveTier(payload.tier || currentTier, true);
+      setActiveTier(payload.route || payload.tier || currentTier, true);
       if (payload.display_name && modelHint) {
         modelHint.textContent = payload.display_name;
       }
@@ -660,13 +692,13 @@
 
   questionInput.addEventListener("input", updateAskButton);
 
-  document.querySelectorAll(".tier-button").forEach(function (button) {
-    button.addEventListener("click", function () {
-      const tier = button.getAttribute("data-tier") || "good";
-      setActiveTier(tier, true);
-      sendModelTier(tier);
+  if (modelRoute) {
+    modelRoute.addEventListener("change", function () {
+      const route = modelRoute.value || "openrouter-qwen-235b";
+      setActiveTier(route, true);
+      sendModelTier(route);
     });
-  });
+  }
 
   if (saveAlbumButton) {
     saveAlbumButton.addEventListener("click", saveSelectedToAlbum);

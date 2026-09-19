@@ -270,11 +270,13 @@ def test_mobile_set_model_tier_command_forwards_tier() -> None:
     with client.websocket_connect(f"/ws/desktop-commands/{session_id}") as desktop_commands:
         with client.websocket_connect(f"/ws/mobile/{session_id}") as mobile:
             mobile.receive_json()
-            mobile.send_text('{"type":"command.set_model_tier","payload":{"tier":"medium"}}')
+            mobile.send_text('{"type":"command.set_model_tier","payload":{"tier":"openrouter-qwen-32b"}}')
             command = desktop_commands.receive_json()
 
     assert command["type"] == "command.set_model_tier"
-    assert command["payload"] == {"source": "mobile", "tier": "medium"}
+    assert command["payload"]["source"] == "mobile"
+    assert command["payload"]["tier"] == "openrouter-qwen-32b"
+    assert command["payload"]["route"] == "openrouter-qwen-32b"
 
 
 def test_completed_answer_text_is_truncated_in_session_storage() -> None:

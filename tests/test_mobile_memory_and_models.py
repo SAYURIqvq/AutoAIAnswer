@@ -35,14 +35,16 @@ def test_overlay_complete_stream_is_capped(qapp, monkeypatch) -> None:
     overlay.deleteLater()
 
 
-def test_mobile_page_exposes_model_tiers_and_clear_chat() -> None:
+def test_mobile_page_exposes_model_routes_and_clear_chat() -> None:
     html = (STATIC / "index.html").read_text(encoding="utf-8")
     js = (STATIC / "app.js").read_text(encoding="utf-8")
     css = (STATIC / "style.css").read_text(encoding="utf-8")
 
-    assert 'data-tier="good"' in html
-    assert 'data-tier="medium"' in html
-    assert 'data-tier="simple"' in html
+    assert 'id="model-route"' in html
+    assert 'value="doubao-seed-vision"' in html
+    assert 'value="openrouter-qwen-235b"' in html
+    assert 'value="openrouter-qwen-32b"' in html
+    assert 'value="deepseek-flash"' in html
     assert "清空聊天" in html
     assert "保存到相册" in html
     assert "全选" in html
@@ -51,7 +53,6 @@ def test_mobile_page_exposes_model_tiers_and_clear_chat() -> None:
     assert "command.set_model_tier" in js
     assert "saveImagesToAlbum" in js
     assert "selectedAlbumItems" in js
-    assert "preview-check" in js
     assert "存储图像" in js
     assert "isAppleMobile" in js
     assert "downloadBlob" not in js
@@ -59,7 +60,7 @@ def test_mobile_page_exposes_model_tiers_and_clear_chat() -> None:
     assert "conversation.cleared" in js
     assert "model.changed" in js
     assert "function removeSentChatScreenshots" in js
-    assert ".tier-button" in css
+    assert "#model-route" in css
     assert ".clear-chat" in css
     assert ".save-album" in css
     assert ".preview-check" in css

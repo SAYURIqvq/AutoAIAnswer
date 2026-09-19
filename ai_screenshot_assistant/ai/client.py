@@ -11,7 +11,13 @@ from typing import Any
 import requests
 from PIL import Image, UnidentifiedImageError
 
-from ai_screenshot_assistant.ai.models import DEFAULT_MODEL_TIER, ModelChoice, resolve_model_choice
+from ai_screenshot_assistant.ai.models import (
+    DEFAULT_MODEL_TIER,
+    DOUBAO_VISION_MODEL,
+    ModelChoice,
+    PROVIDER_LABELS,
+    resolve_model_choice,
+)
 from ai_screenshot_assistant.ai.prompt import VISION_PROMPT
 from ai_screenshot_assistant.core.conversation import cap_conversation_memory
 
@@ -310,7 +316,9 @@ def _format_conversation(conversation: list[dict[str, str]]) -> str:
 
 
 class FailoverVisionClient:
-    """Routes Chinese vision models by tier. DeepSeek flash is simple; Qwen VL is good/medium."""
+    """Routes a selected Chinese vision provider, with a one-shot 402 failover."""
+
+    _FAILOVER_ORDER = ("openrouter", "deepseek", "doubao")
 
     def __init__(
         self,
@@ -318,12 +326,23 @@ class FailoverVisionClient:
         openrouter: ProviderConfig,
         on_provider_changed: Callable[[str], None] | None = None,
         model_tier: str = DEFAULT_MODEL_TIER,
+        doubao: ProviderConfig | None = None,
     ) -> None:
         self.deepseek = VisionClient(deepseek)
         self.openrouter = VisionClient(openrouter)
+        self.doubao = VisionClient(
+            doubao
+            or ProviderConfig(
+                name="Doubao",
+                api_key="",
+                base_url="https://ark.cn-beijing.volces.com/api/v3",
+                model=DOUBAO_VISION_MODEL,
+            )
+        )
         self.on_provider_changed = on_provider_changed or (lambda _name: None)
         self._deepseek_has_key = self._has_key(self.deepseek)
         self._openrouter_has_key = self._has_key(self.openrouter)
+        self._doubao_has_key = self._has_key(self.doubao)
         self.current_provider = self._initial_provider()
         self.model_choice = self.apply_model_tier(model_tier)
 
@@ -345,11 +364,27 @@ class FailoverVisionClient:
             raise RuntimeError("当前 AI 客户端不支持多张截图")
         yield from client.analyze_image_stream(png_images[0], user_text=user_text, conversation=conversation)
 
+    def _has_provider(self, name: str) -> bool:
+        return {
+            "openrouter": self._openrouter_has_key,
+            "deepseek": self._deepseek_has_key,
+            "doubao": self._doubao_has_key,
+        }.get(name, False)
+
+    def _client_for(self, name: str) -> VisionClient:
+        return {
+            "openrouter": self.openrouter,
+            "deepseek": self.deepseek,
+            "doubao": self.doubao,
+        }[name]
+
     def _initial_provider(self) -> str:
-        if self._deepseek_has_key:
-            return "deepseek"
         if self._openrouter_has_key:
             return "openrouter"
+        if self._deepseek_has_key:
+            return "deepseek"
+        if self._doubao_has_key:
+            return "doubao"
         return "none"
 
     def current_model_id(self) -> str:
@@ -357,6 +392,8 @@ class FailoverVisionClient:
             provider = getattr(self.openrouter, "provider", None)
         elif self.current_provider == "deepseek":
             provider = getattr(self.deepseek, "provider", None)
+        elif self.current_provider == "doubao":
+            provider = getattr(self.doubao, "provider", None)
         else:
             provider = None
         return str(getattr(provider, "model", "") or "")
@@ -366,13 +403,17 @@ class FailoverVisionClient:
             tier,
             has_deepseek=self._deepseek_has_key,
             has_openrouter=self._openrouter_has_key,
+            has_doubao=self._doubao_has_key,
         )
         deepseek_provider = getattr(self.deepseek, "provider", None)
         openrouter_provider = getattr(self.openrouter, "provider", None)
+        doubao_provider = getattr(self.doubao, "provider", None)
         if isinstance(deepseek_provider, ProviderConfig):
             self.deepseek = VisionClient(replace(deepseek_provider, model=choice.deepseek_model))
         if isinstance(openrouter_provider, ProviderConfig):
             self.openrouter = VisionClient(replace(openrouter_provider, model=choice.openrouter_model))
+        if isinstance(doubao_provider, ProviderConfig):
+            self.doubao = VisionClient(replace(doubao_provider, model=choice.doubao_model))
         previous = self.current_provider
         self.current_provider = choice.provider
         self.model_choice = choice
@@ -394,22 +435,32 @@ class FailoverVisionClient:
         user_text: str | None = None,
         conversation: list[dict[str, str]] | None = None,
     ) -> Iterator[str]:
-        if not self._deepseek_has_key and not self._openrouter_has_key:
-            raise RuntimeError("请至少填写 DeepSeek 或 OpenRouter 其中一把 API Key")
-        if self.current_provider == "openrouter" or not self._deepseek_has_key:
-            yield from self._stream_from_client(self.openrouter, png_images, user_text, conversation)
-            return
+        if not self._deepseek_has_key and not self._openrouter_has_key and not self._doubao_has_key:
+            raise RuntimeError("请至少填写 DeepSeek、OpenRouter 或豆包其中一把 API Key")
+        if self.current_provider == "none":
+            raise RuntimeError("当前路线未配置 Key")
         try:
-            yield from self._stream_from_client(self.deepseek, png_images, user_text, conversation)
+            yield from self._stream_from_client(
+                self._client_for(self.current_provider),
+                png_images,
+                user_text,
+                conversation,
+            )
+            return
         except requests.HTTPError as exc:
             status_code = exc.response.status_code if exc.response is not None else None
             if status_code != 402:
                 raise
-            if not self._openrouter_has_key:
-                raise RuntimeError("DeepSeek 额度不足（HTTP 402），且未配置 OpenRouter Key") from exc
-            self.current_provider = "openrouter"
-            self.on_provider_changed("openrouter")
-            yield from self._stream_from_client(self.openrouter, png_images, user_text, conversation)
+        failed = self.current_provider
+        for name in self._FAILOVER_ORDER:
+            if name == failed or not self._has_provider(name):
+                continue
+            self.current_provider = name
+            self.on_provider_changed(name)
+            yield from self._stream_from_client(self._client_for(name), png_images, user_text, conversation)
+            return
+        vendor = PROVIDER_LABELS.get(failed, failed)
+        raise RuntimeError(f"{vendor} 额度不足（HTTP 402），且没有其他可用 Key")
 
 
 # Backward-compatible name for older imports and static delta parser tests.

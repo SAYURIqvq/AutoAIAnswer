@@ -161,10 +161,11 @@ def _mobile_command_payload(data: dict[str, Any]) -> dict[str, Any]:
     raw_images = source_payload.get("images") or data.get("images")
     if isinstance(raw_images, list):
         payload["images"] = [str(image) for image in raw_images[:5] if isinstance(image, str)]
-    raw_tier = source_payload.get("tier") or data.get("tier")
+    raw_tier = source_payload.get("route") or source_payload.get("tier") or data.get("route") or data.get("tier")
     tier = str(raw_tier or "").strip()
     if tier:
-        payload["tier"] = tier[:32]
+        payload["tier"] = tier[:64]
+        payload["route"] = tier[:64]
     return payload
 
 
