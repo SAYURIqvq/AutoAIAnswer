@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 import json
+import re
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import Body, FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -16,6 +17,7 @@ STATIC_DIR = Path(__file__).resolve().parents[1] / "web" / "static"
 
 app = FastAPI(title="AI Screenshot Assistant Backend")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+PAIR_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{24,128}$")
 
 
 @app.get("/health")
@@ -24,8 +26,10 @@ async def health() -> dict[str, str]:
 
 
 @app.post("/sessions")
-async def create_session() -> dict[str, str]:
-    session = manager.create_session()
+async def create_session(payload: dict[str, Any] | None = Body(default=None)) -> dict[str, str]:
+    requested_token = str((payload or {}).get("pair_token") or "")
+    pair_token = requested_token if PAIR_TOKEN_RE.fullmatch(requested_token) else None
+    session = manager.create_session(pair_token=pair_token)
     return {
         "session_id": session.session_id,
         "pair_token": session.pair_token,

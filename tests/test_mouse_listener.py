@@ -91,6 +91,12 @@ def test_disabled_listener_clears_pending_right_click() -> None:
     assert clicks == []
 
 
+def test_stop_without_start_is_safe_on_macos(monkeypatch) -> None:
+    listener = MouseRoiListener(lambda x, y: None, lambda x, y: None)
+    monkeypatch.setattr("ai_screenshot_assistant.input.mouse_listener.sys.platform", "darwin")
+    listener.stop()
+
+
 def test_control_left_long_press_triggers_fullscreen(monkeypatch) -> None:
     long_left = []
     long_right = []

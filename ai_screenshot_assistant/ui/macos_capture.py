@@ -74,6 +74,9 @@ def hwnd_from_widget(widget: object) -> int:
 
 
 if sys.platform != "darwin":
+    def apply_window_capture_exclusion(target: object, enabled: bool = True) -> tuple[bool, str]:
+        return False, "仅 macOS 支持捕获排除"
+
     def apply_capture_exclusion(hwnd: int, enabled: bool = True) -> tuple[bool, str]:
         if not hwnd:
             return False, "窗口句柄尚未创建"
@@ -206,6 +209,18 @@ else:
         if enabled and current != NSWindowSharingNone:
             return False, f"sharingType 未生效 ({current})"
         return True, "已从捕获中排除" if enabled else "已允许被捕获"
+
+    def apply_window_capture_exclusion(target: object, enabled: bool = True) -> tuple[bool, str]:
+        """Change capture sharing only; do not give normal windows overlay styling."""
+        window = _window_from_target(target)
+        if not window:
+            return False, "窗口尚未挂到 NSWindow"
+        sharing = NSWindowSharingNone if enabled else NSWindowSharingReadOnly
+        _set_sharing_type(window, sharing)
+        current = _sharing_type(window)
+        if current != sharing:
+            return False, f"sharingType 未生效 ({current})"
+        return True, "控制台已从捕获中排除" if enabled else "控制台可被捕获"
 
     def is_excluded_from_capture(target: object) -> bool:
         window = _window_from_target(target)

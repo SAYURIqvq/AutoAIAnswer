@@ -6,12 +6,14 @@ import time
 import uvicorn
 
 from ai_screenshot_assistant.backend.app import app
-from ai_screenshot_assistant.utils.network import first_available_port, get_lan_ip
+from ai_screenshot_assistant.utils.network import get_lan_ip
 
 
 class EmbeddedBackend:
     def __init__(self, preferred_port: int) -> None:
-        self.port = first_available_port(preferred_port)
+        # Keep the pairing address stable. A second instance must not silently
+        # move the service to 8001, 8002, and so on.
+        self.port = preferred_port
         self.lan_ip = get_lan_ip()
         self.url = f"http://{self.lan_ip}:{self.port}"
         self.local_url = f"http://127.0.0.1:{self.port}"
@@ -37,3 +39,8 @@ class EmbeddedBackend:
         if not self._server.started:
             raise RuntimeError("Embedded backend stopped before it was ready")
         return self.url
+
+    def stop(self) -> None:
+        self._server.should_exit = True
+        if self._thread.is_alive():
+            self._thread.join(timeout=5)

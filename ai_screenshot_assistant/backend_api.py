@@ -21,8 +21,9 @@ class BackendApi:
         # (for example a local proxy on 127.0.0.1:9674) must not intercept it.
         self.http.trust_env = False
 
-    def create_session(self) -> BackendSession:
-        response = self.http.post(f"{self.base_url}/sessions", timeout=10)
+    def create_session(self, pair_token: str | None = None) -> BackendSession:
+        payload = {"pair_token": pair_token} if pair_token else None
+        response = self.http.post(f"{self.base_url}/sessions", json=payload, timeout=10)
         response.raise_for_status()
         data = response.json()
         return BackendSession(

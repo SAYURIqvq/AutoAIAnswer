@@ -16,6 +16,28 @@ def test_create_session_and_mobile_page() -> None:
     assert session["session_id"] in page.text
 
 
+def test_create_session_reuses_requested_pair_token() -> None:
+    client = TestClient(app)
+    token = "stable_pair_token_1234567890"
+
+    first = client.post("/sessions", json={"pair_token": token}).json()
+    second = client.post("/sessions", json={"pair_token": token}).json()
+
+    assert first["pair_url"] == second["pair_url"] == f"/pair?t={token}"
+    assert first["session_id"] != second["session_id"]
+    assert client.get(first["mobile_url"]).status_code == 404
+    assert client.get(second["pair_url"]).status_code == 200
+
+
+def test_create_session_rejects_weak_requested_pair_token() -> None:
+    client = TestClient(app)
+
+    session = client.post("/sessions", json={"pair_token": "too-short"}).json()
+
+    assert session["pair_token"] != "too-short"
+    assert len(session["pair_token"]) >= 24
+
+
 def test_desktop_events_reach_mobile_websocket() -> None:
     client = TestClient(app)
     session = client.post("/sessions").json()

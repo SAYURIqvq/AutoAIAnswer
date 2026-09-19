@@ -4,6 +4,7 @@ from ai_screenshot_assistant.ui.macos_capture import (
     keep_overlay_fronted,
     overlay_window_level,
 )
+from ai_screenshot_assistant.ui.native_capture import apply_window_capture_exclusion
 from ai_screenshot_assistant.ui.native_capture import apply_capture_exclusion as native_apply
 from ai_screenshot_assistant.ui.native_capture import keep_overlay_fronted as native_keep_fronted
 
@@ -28,6 +29,12 @@ def test_keep_overlay_fronted_is_exported() -> None:
     keep_overlay_fronted(0)
     native_keep_fronted(0)
     assert overlay_window_level() == 3
+
+
+def test_console_capture_exclusion_is_exported() -> None:
+    ok, message = apply_window_capture_exclusion(0)
+    assert ok is False
+    assert message
 
 
 def test_empty_hwnd_is_rejected() -> None:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import gc
+import secrets
 import sys
 import threading
 from typing import Any
@@ -42,6 +43,7 @@ from ai_screenshot_assistant.desktop_command_client import DesktopCommandClient
 from ai_screenshot_assistant.input.mouse_listener import MouseRoiListener
 from ai_screenshot_assistant.resources import app_icon_path
 from ai_screenshot_assistant.ui.streaming_overlay import StreamingOverlay
+from ai_screenshot_assistant.ui.native_capture import apply_window_capture_exclusion
 from ai_screenshot_assistant.utils.qrcode_image import QR_DISPLAY_PX, pair_qr_png_bytes
 from ai_screenshot_assistant.websocket_client import DesktopWebSocketPublisher
 
@@ -59,6 +61,10 @@ class UiSignals(QObject):
     mobile_fullscreen_requested = Signal(dict)
     clear_conversation_requested = Signal()
     model_tier_requested = Signal(str)
+    desktop_command_received = Signal(dict)
+    mouse_long_left = Signal(int, int)
+    mouse_short_left = Signal(int, int)
+    mouse_long_right = Signal(int, int)
 
 
 class MainWindow(QMainWindow):
@@ -90,6 +96,10 @@ class MainWindow(QMainWindow):
         self.signals.provider_changed.connect(self._on_provider_failover)
         self.signals.clear_conversation_requested.connect(self._clear_conversation)
         self.signals.model_tier_requested.connect(self._on_model_tier_requested)
+        self.signals.desktop_command_received.connect(self._handle_desktop_command)
+        self.signals.mouse_long_left.connect(self._left_up)
+        self.signals.mouse_short_left.connect(self._second_left_up)
+        self.signals.mouse_long_right.connect(self._right_long)
 
         self.overlay = StreamingOverlay(self.app_settings)
         self.signals.stream_started.connect(self._on_stream_started)
@@ -127,6 +137,11 @@ class MainWindow(QMainWindow):
         self.overlay_toggle = QCheckBox("显示桌面流式悬浮答案")
         self.overlay_toggle.toggled.connect(self.set_overlay_visible)
         overlay_visible = self._settings_bool("overlay/visible", True)
+        self.console_capture_toggle = QCheckBox("共享屏幕时隐藏控制台")
+        self.console_capture_toggle.setChecked(
+            self._settings_bool("capture/hide_console", sys.platform in {"darwin", "win32"})
+        )
+        self.console_capture_toggle.toggled.connect(self.set_console_capture_excluded)
         opacity_percent = int(self.app_settings.value("overlay/opacity_percent", 50) or 50)
         opacity_percent = max(15, min(100, opacity_percent))
         self.opacity_label = QLabel(f"字幕透明度：{opacity_percent}%")
@@ -184,6 +199,7 @@ class MainWindow(QMainWindow):
         layout.addLayout(provider_form)
         layout.addLayout(save_row)
         layout.addWidget(self.overlay_toggle)
+        layout.addWidget(self.console_capture_toggle)
         opacity_row = QHBoxLayout()
         opacity_row.addWidget(self.opacity_label)
         opacity_row.addWidget(self.opacity_slider, 1)
@@ -221,6 +237,7 @@ class MainWindow(QMainWindow):
         self._setup_tray_icon()
         self._setup_workflow()
         self.overlay_toggle.setChecked(overlay_visible)
+        QTimer.singleShot(250, self._apply_console_capture_setting)
         QTimer.singleShot(600, self._maybe_prompt_macos_permissions)
 
     def _setup_tray_icon(self) -> None:
@@ -260,6 +277,7 @@ class MainWindow(QMainWindow):
         self.showNormal()
         self.raise_()
         self.activateWindow()
+        QTimer.singleShot(100, self._apply_console_capture_setting)
 
     def quit_from_tray(self) -> None:
         self._force_quit = True
@@ -364,6 +382,17 @@ class MainWindow(QMainWindow):
         else:
             self.overlay.hide()
 
+    def set_console_capture_excluded(self, enabled: bool) -> None:
+        self.app_settings.setValue("capture/hide_console", enabled)
+        self.app_settings.sync()
+        QTimer.singleShot(0, self._apply_console_capture_setting)
+
+    def _apply_console_capture_setting(self) -> None:
+        enabled = self.console_capture_toggle.isChecked()
+        ok, status = apply_window_capture_exclusion(self, enabled)
+        if sys.platform in {"darwin", "win32"} and not ok:
+            self._log(f"控制台捕获设置失败：{status}")
+
     def _on_overlay_opacity(self, percent: int) -> None:
         self.opacity_label.setText(f"字幕透明度：{percent}%")
         self.app_settings.setValue("overlay/opacity_percent", percent)
@@ -393,12 +422,17 @@ class MainWindow(QMainWindow):
 
     def _setup_workflow(self) -> None:
         try:
-            self.session = BackendApi(self.backend_url).create_session()
+            pair_token = str(self.app_settings.value("mobile/pair_token", "") or "")
+            if len(pair_token) < 24:
+                pair_token = secrets.token_urlsafe(32)
+                self.app_settings.setValue("mobile/pair_token", pair_token)
+                self.app_settings.sync()
+            self.session = BackendApi(self.backend_url).create_session(pair_token=pair_token)
             self.publisher = DesktopWebSocketPublisher(self.backend_url, self.session.session_id)
             self.command_client = DesktopCommandClient(
                 self.backend_url,
                 self.session.session_id,
-                self._handle_desktop_command,
+                self.signals.desktop_command_received.emit,
             )
             self.mobile_label.setText(f"手机端：{self.session.pair_url}")
             self._set_qr(self.session.pair_url)
@@ -428,7 +462,11 @@ class MainWindow(QMainWindow):
         if ai_client.current_provider == "none":
             self.save_status.setText("请至少填写一把 API Key 后保存")
             self.save_status.setStyleSheet("color: #d33;")
-        self.mouse_listener = MouseRoiListener(self._left_up, self._second_left_up, self._right_long)
+        self.mouse_listener = MouseRoiListener(
+            self.signals.mouse_long_left.emit,
+            self.signals.mouse_short_left.emit,
+            self.signals.mouse_long_right.emit,
+        )
         try:
             self.mouse_listener.start()
             self.workflow.start_capture()

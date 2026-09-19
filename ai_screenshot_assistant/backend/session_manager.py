@@ -58,9 +58,12 @@ class SessionManager:
         self.sessions: dict[str, Session] = {}
         self.tokens: dict[str, str] = {}
 
-    def create_session(self, ttl_minutes: int = 60) -> Session:
+    def create_session(self, ttl_minutes: int = 60, pair_token: str | None = None) -> Session:
         session_id = uuid4().hex
-        pair_token = secrets.token_urlsafe(18)
+        pair_token = pair_token or secrets.token_urlsafe(18)
+        previous_session_id = self.tokens.get(pair_token)
+        if previous_session_id:
+            self.sessions.pop(previous_session_id, None)
         now = datetime.now(timezone.utc)
         session = Session(
             session_id=session_id,

@@ -26,6 +26,7 @@ class MouseRoiListener:
         self._enabled = True
         self._state_lock = threading.Lock()
         self._mac_listener = None
+        self._mac_callback = None
 
     @property
     def enabled(self) -> bool:
@@ -42,24 +43,43 @@ class MouseRoiListener:
 
     def start(self) -> None:
         if sys.platform == "darwin":
-            from pynput import mouse as pynput_mouse
+            from AppKit import (
+                NSEvent,
+                NSEventMaskLeftMouseDown,
+                NSEventMaskLeftMouseUp,
+                NSEventMaskRightMouseDown,
+                NSEventMaskRightMouseUp,
+                NSEventTypeLeftMouseDown,
+                NSEventTypeLeftMouseUp,
+                NSEventTypeRightMouseDown,
+                NSEventTypeRightMouseUp,
+            )
+            from Quartz import CGEventGetLocation
 
-            def on_click(x: int, y: int, button: object, pressed: bool) -> None:
-                position = (int(x), int(y))
-                if button == pynput_mouse.Button.left:
-                    if pressed:
-                        self._handle_left_down(position)
-                    else:
-                        self._handle_left_up()
-                    return
-                if button == pynput_mouse.Button.right:
-                    if pressed:
-                        self._handle_right_down(position)
-                    else:
-                        self._handle_right_up()
+            def on_event(event: object) -> None:
+                event_type = event.type()
+                location = CGEventGetLocation(event.CGEvent())
+                position = (int(location.x), int(location.y))
+                if event_type == NSEventTypeLeftMouseDown:
+                    self._handle_left_down(position)
+                elif event_type == NSEventTypeLeftMouseUp:
+                    self._handle_left_up()
+                elif event_type == NSEventTypeRightMouseDown:
+                    self._handle_right_down(position)
+                elif event_type == NSEventTypeRightMouseUp:
+                    self._handle_right_up()
 
-            self._mac_listener = pynput_mouse.Listener(on_click=on_click)
-            self._mac_listener.start()
+            mask = (
+                NSEventMaskLeftMouseDown
+                | NSEventMaskLeftMouseUp
+                | NSEventMaskRightMouseDown
+                | NSEventMaskRightMouseUp
+            )
+            # Keep the callback alive for as long as AppKit owns the monitor.
+            self._mac_callback = on_event
+            self._mac_listener = NSEvent.addGlobalMonitorForEventsMatchingMask_handler_(mask, on_event)
+            if self._mac_listener is None:
+                raise RuntimeError("macOS global mouse monitor could not be created")
             return
 
         import mouse
@@ -70,9 +90,13 @@ class MouseRoiListener:
         mouse.on_button(self._handle_right_up, buttons=("right",), types=("up",))
 
     def stop(self) -> None:
-        if self._mac_listener is not None:
-            self._mac_listener.stop()
-            self._mac_listener = None
+        if sys.platform == "darwin":
+            if self._mac_listener is not None:
+                from AppKit import NSEvent
+
+                NSEvent.removeMonitor_(self._mac_listener)
+                self._mac_listener = None
+                self._mac_callback = None
             return
 
         import mouse
@@ -82,6 +106,8 @@ class MouseRoiListener:
     def _current_position(self, position: tuple[int, int] | None) -> tuple[int, int]:
         if isinstance(position, tuple) and len(position) == 2:
             return (int(position[0]), int(position[1]))
+        if sys.platform == "darwin":
+            return (0, 0)
         import mouse
 
         x, y = mouse.get_position()
