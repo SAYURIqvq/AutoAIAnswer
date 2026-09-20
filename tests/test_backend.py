@@ -16,6 +16,85 @@ def test_create_session_and_mobile_page() -> None:
     assert session["session_id"] in page.text
 
 
+def test_create_session_reuses_requested_pair_token() -> None:
+    client = TestClient(app)
+    token = "stable_pair_token_1234567890"
+
+    first = client.post("/sessions", json={"pair_token": token}).json()
+    second = client.post("/sessions", json={"pair_token": token}).json()
+
+    assert first["pair_url"] == second["pair_url"] == f"/pair?t={token}"
+    assert first["session_id"] != second["session_id"]
+    assert client.get(first["mobile_url"]).status_code == 404
+    assert client.get(second["pair_url"]).status_code == 200
+
+
+def test_create_session_rejects_weak_requested_pair_token() -> None:
+    client = TestClient(app)
+
+    session = client.post("/sessions", json={"pair_token": "too-short"}).json()
+
+    assert session["pair_token"] != "too-short"
+    assert len(session["pair_token"]) >= 24
+
+
+def test_pair_page_waits_when_desktop_session_is_missing() -> None:
+    client = TestClient(app)
+    token = "waiting_pair_token_abcdef123456"
+
+    waiting = client.get(f"/pair?t={token}")
+    lookup = client.get(f"/session?t={token}")
+
+    assert waiting.status_code == 200
+    assert 'window.SESSION_ID = ""' in waiting.text
+    assert token in waiting.text
+    assert lookup.json() == {"ok": False}
+
+    created = client.post("/sessions", json={"pair_token": token}).json()
+    ready = client.get(f"/session?t={token}")
+
+    assert ready.json()["ok"] is True
+    assert ready.json()["session_id"] == created["session_id"]
+    assert created["session_id"] in client.get(f"/pair?t={token}").text
+
+
+def test_pair_cookie_reconnects_without_new_scan() -> None:
+    client = TestClient(app)
+    token = "cookie_pair_token_abcdef123456"
+    client.post("/sessions", json={"pair_token": token})
+    client.get(f"/pair?t={token}")
+
+    home = client.get("/", follow_redirects=False)
+    stale_mobile = client.get("/mobile?session_id=dead-session", follow_redirects=False)
+
+    assert home.status_code == 302
+    assert home.headers["location"] == f"/pair?t={token}"
+    assert stale_mobile.status_code == 302
+    assert stale_mobile.headers["location"] == f"/pair?t={token}"
+
+
+def test_idle_expired_session_is_dropped() -> None:
+    from datetime import datetime, timedelta, timezone
+
+    manager = SessionManager()
+    session = manager.create_session(ttl_minutes=1)
+    session.expire_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+
+    assert manager.get(session.session_id) is None
+
+
+def test_connected_session_does_not_expire() -> None:
+    from datetime import datetime, timedelta, timezone
+
+    manager = SessionManager()
+    session = manager.create_session(ttl_minutes=1)
+    session.expire_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+    session.desktop = object()  # type: ignore[assignment]
+
+    assert manager.get(session.session_id) is session
+    assert session.expire_at > datetime.now(timezone.utc)
+
+
 def test_desktop_events_reach_mobile_websocket() -> None:
     client = TestClient(app)
     session = client.post("/sessions").json()
@@ -248,11 +327,13 @@ def test_mobile_set_model_tier_command_forwards_tier() -> None:
     with client.websocket_connect(f"/ws/desktop-commands/{session_id}") as desktop_commands:
         with client.websocket_connect(f"/ws/mobile/{session_id}") as mobile:
             mobile.receive_json()
-            mobile.send_text('{"type":"command.set_model_tier","payload":{"tier":"medium"}}')
+            mobile.send_text('{"type":"command.set_model_tier","payload":{"tier":"openrouter-qwen-32b","route":"openrouter-qwen-32b"}}')
             command = desktop_commands.receive_json()
 
     assert command["type"] == "command.set_model_tier"
-    assert command["payload"] == {"source": "mobile", "tier": "medium"}
+    assert command["payload"]["source"] == "mobile"
+    assert command["payload"]["tier"] == "openrouter-qwen-32b"
+    assert command["payload"]["route"] == "openrouter-qwen-32b"
 
 
 def test_completed_answer_text_is_truncated_in_session_storage() -> None:

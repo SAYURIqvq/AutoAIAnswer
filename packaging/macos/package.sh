@@ -10,6 +10,12 @@ pyinstaller --noconfirm --clean --windowed --name QQMusic \
   --hidden-import ai_screenshot_assistant.ui.macos_capture \
   --hidden-import ai_screenshot_assistant.ui.native_capture \
   --hidden-import ai_screenshot_assistant.ui.streaming_overlay \
+  --hidden-import pynput \
+  --hidden-import pynput.mouse \
+  --hidden-import pynput.mouse._darwin \
+  --hidden-import pynput._util \
+  --hidden-import pynput._util.darwin \
+  --collect-submodules pynput \
   --exclude-module IPython \
   --exclude-module pytest \
   --exclude-module matplotlib \

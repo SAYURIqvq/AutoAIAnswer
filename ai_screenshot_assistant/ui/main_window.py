@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import gc
+import secrets
 import sys
 import threading
 from typing import Any
@@ -32,7 +33,8 @@ from PySide6.QtWidgets import (
 )
 
 from ai_screenshot_assistant.ai.client import FailoverVisionClient, ProviderConfig
-from ai_screenshot_assistant.ai.models import DEFAULT_MODEL_TIER, TIER_LABELS, normalize_model_tier, tier_options
+from ai_screenshot_assistant.ai.models import DEFAULT_MODEL_TIER, normalize_model_tier, route_options
+from ai_screenshot_assistant.backend.session_manager import valid_pair_token
 from ai_screenshot_assistant.backend_api import BackendApi, BackendSession
 from ai_screenshot_assistant.capture.screenshot import ScreenCapture
 from ai_screenshot_assistant.config import settings
@@ -42,6 +44,7 @@ from ai_screenshot_assistant.desktop_command_client import DesktopCommandClient
 from ai_screenshot_assistant.input.mouse_listener import MouseRoiListener
 from ai_screenshot_assistant.resources import app_icon_path
 from ai_screenshot_assistant.ui.streaming_overlay import StreamingOverlay
+from ai_screenshot_assistant.ui.native_capture import apply_window_capture_exclusion
 from ai_screenshot_assistant.utils.qrcode_image import QR_DISPLAY_PX, pair_qr_png_bytes
 from ai_screenshot_assistant.websocket_client import DesktopWebSocketPublisher
 
@@ -59,12 +62,17 @@ class UiSignals(QObject):
     mobile_fullscreen_requested = Signal(dict)
     clear_conversation_requested = Signal()
     model_tier_requested = Signal(str)
+    desktop_command_received = Signal(dict)
+    mouse_long_left = Signal(int, int)
+    mouse_short_left = Signal(int, int)
+    mouse_long_right = Signal(int, int)
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, backend_url: str | None = None) -> None:
+    def __init__(self, backend_url: str | None = None, public_url: str | None = None) -> None:
         super().__init__()
         self.backend_url = backend_url or settings.backend_url
+        self.public_url = (public_url or self.backend_url).rstrip("/")
         self.setWindowTitle(gAppName)
         icon = self._app_icon()
         if not icon.isNull():
@@ -79,6 +87,9 @@ class MainWindow(QMainWindow):
         self.openrouter_key = str(
             self.app_settings.value("providers/openrouter_key", settings.openrouter_api_key) or ""
         )
+        self.doubao_key = str(
+            self.app_settings.value("providers/doubao_key", settings.doubao_api_key) or ""
+        )
         self.model_tier = normalize_model_tier(
             str(self.app_settings.value("providers/model_tier", settings.model_tier) or DEFAULT_MODEL_TIER)
         )
@@ -90,6 +101,10 @@ class MainWindow(QMainWindow):
         self.signals.provider_changed.connect(self._on_provider_failover)
         self.signals.clear_conversation_requested.connect(self._clear_conversation)
         self.signals.model_tier_requested.connect(self._on_model_tier_requested)
+        self.signals.desktop_command_received.connect(self._handle_desktop_command)
+        self.signals.mouse_long_left.connect(self._left_up)
+        self.signals.mouse_short_left.connect(self._second_left_up)
+        self.signals.mouse_long_right.connect(self._right_long)
 
         self.overlay = StreamingOverlay(self.app_settings)
         self.signals.stream_started.connect(self._on_stream_started)
@@ -111,13 +126,16 @@ class MainWindow(QMainWindow):
         self.provider_label = QLabel("当前模型：未配置")
         self.deepseek_key_input = QLineEdit(self.deepseek_key)
         self.deepseek_key_input.setEchoMode(QLineEdit.Normal)
-        self.deepseek_key_input.setPlaceholderText("可选，简单档优先使用")
+        self.deepseek_key_input.setPlaceholderText("可选，DeepSeek Flash 看图")
         self.openrouter_key_input = QLineEdit(self.openrouter_key)
         self.openrouter_key_input.setEchoMode(QLineEdit.Normal)
-        self.openrouter_key_input.setPlaceholderText("可选，好/中等档使用通义千问 VL")
+        self.openrouter_key_input.setPlaceholderText("可选，通义千问 VL")
+        self.doubao_key_input = QLineEdit(self.doubao_key)
+        self.doubao_key_input.setEchoMode(QLineEdit.Normal)
+        self.doubao_key_input.setPlaceholderText("可选，火山方舟 ARK_API_KEY")
         self.model_tier_combo = QComboBox()
-        for tier, label, hint in tier_options():
-            self.model_tier_combo.addItem(f"{label} · {hint}", tier)
+        for route_id, vendor, model in route_options():
+            self.model_tier_combo.addItem(f"{vendor} · {model}", route_id)
         index = self.model_tier_combo.findData(self.model_tier)
         self.model_tier_combo.setCurrentIndex(index if index >= 0 else 0)
         self.model_tier_combo.currentIndexChanged.connect(self._on_desktop_model_tier)
@@ -127,6 +145,11 @@ class MainWindow(QMainWindow):
         self.overlay_toggle = QCheckBox("显示桌面流式悬浮答案")
         self.overlay_toggle.toggled.connect(self.set_overlay_visible)
         overlay_visible = self._settings_bool("overlay/visible", True)
+        self.console_capture_toggle = QCheckBox("共享屏幕时隐藏控制台")
+        self.console_capture_toggle.setChecked(
+            self._settings_bool("capture/hide_console", sys.platform in {"darwin", "win32"})
+        )
+        self.console_capture_toggle.toggled.connect(self.set_console_capture_excluded)
         opacity_percent = int(self.app_settings.value("overlay/opacity_percent", 50) or 50)
         opacity_percent = max(15, min(100, opacity_percent))
         self.opacity_label = QLabel(f"字幕透明度：{opacity_percent}%")
@@ -172,7 +195,8 @@ class MainWindow(QMainWindow):
         provider_form = QFormLayout()
         provider_form.addRow("DeepSeek Key（可选）", self.deepseek_key_input)
         provider_form.addRow("OpenRouter Key（可选）", self.openrouter_key_input)
-        provider_form.addRow("模型档位", self.model_tier_combo)
+        provider_form.addRow("豆包 Key（可选）", self.doubao_key_input)
+        provider_form.addRow("模型", self.model_tier_combo)
 
         save_row = QHBoxLayout()
         save_row.addWidget(self.save_providers_button)
@@ -184,6 +208,7 @@ class MainWindow(QMainWindow):
         layout.addLayout(provider_form)
         layout.addLayout(save_row)
         layout.addWidget(self.overlay_toggle)
+        layout.addWidget(self.console_capture_toggle)
         opacity_row = QHBoxLayout()
         opacity_row.addWidget(self.opacity_label)
         opacity_row.addWidget(self.opacity_slider, 1)
@@ -221,6 +246,7 @@ class MainWindow(QMainWindow):
         self._setup_tray_icon()
         self._setup_workflow()
         self.overlay_toggle.setChecked(overlay_visible)
+        QTimer.singleShot(250, self._apply_console_capture_setting)
         QTimer.singleShot(600, self._maybe_prompt_macos_permissions)
 
     def _setup_tray_icon(self) -> None:
@@ -260,6 +286,7 @@ class MainWindow(QMainWindow):
         self.showNormal()
         self.raise_()
         self.activateWindow()
+        QTimer.singleShot(100, self._apply_console_capture_setting)
 
     def quit_from_tray(self) -> None:
         self._force_quit = True
@@ -298,25 +325,36 @@ class MainWindow(QMainWindow):
             model=settings.openrouter_model,
             timeout_seconds=settings.request_timeout_seconds,
         )
+        doubao = ProviderConfig(
+            name="Doubao",
+            api_key=self.doubao_key,
+            base_url=settings.doubao_base_url,
+            model=settings.doubao_model,
+            timeout_seconds=settings.request_timeout_seconds,
+        )
         return FailoverVisionClient(
             deepseek,
             openrouter,
             on_provider_changed=lambda name: self.signals.provider_changed.emit(name),
             model_tier=self.model_tier,
+            doubao=doubao,
         )
 
     def save_provider_settings(self) -> None:
         deepseek_key = self.deepseek_key_input.text().strip()
         openrouter_key = self.openrouter_key_input.text().strip()
-        if not deepseek_key and not openrouter_key:
-            self.save_status.setText("请至少填写 DeepSeek 或 OpenRouter 其中一把 Key")
+        doubao_key = self.doubao_key_input.text().strip()
+        if not deepseek_key and not openrouter_key and not doubao_key:
+            self.save_status.setText("请至少填写 DeepSeek、OpenRouter 或豆包其中一把 Key")
             self.save_status.setStyleSheet("color: #d33;")
             return
         self.deepseek_key = deepseek_key
         self.openrouter_key = openrouter_key
+        self.doubao_key = doubao_key
         self.model_tier = normalize_model_tier(self.model_tier_combo.currentData())
         self.app_settings.setValue("providers/deepseek_key", deepseek_key)
         self.app_settings.setValue("providers/openrouter_key", openrouter_key)
+        self.app_settings.setValue("providers/doubao_key", doubao_key)
         self.app_settings.setValue("providers/model_tier", self.model_tier)
         self.app_settings.sync()
         client = self._build_ai_client()
@@ -324,12 +362,9 @@ class MainWindow(QMainWindow):
             self.workflow.ai_client = client
         self._refresh_provider_label()
         self._publish_model_changed()
-        if self.model_tier in {"good", "medium"} and openrouter_key:
-            self.save_status.setText("已保存；好/中等档使用通义千问 VL")
-        elif deepseek_key:
-            self.save_status.setText("已保存；简单档优先 DeepSeek Flash")
-        else:
-            self.save_status.setText("已保存；将使用通义千问 VL")
+        choice = getattr(client, "model_choice", None)
+        display = getattr(choice, "display_name", "") if choice is not None else ""
+        self.save_status.setText(f"已保存；{display}" if display else "已保存")
         self.save_status.setStyleSheet("color: #198754;")
         self._log("Provider settings updated")
 
@@ -338,24 +373,31 @@ class MainWindow(QMainWindow):
 
     def _refresh_provider_label(self, provider: str | None = None) -> None:
         client = self.workflow.ai_client if self.workflow is not None else None
+        choice = getattr(client, "model_choice", None)
         current = provider or getattr(client, "current_provider", "none")
+        if choice is not None and getattr(choice, "display_name", ""):
+            if current not in {None, "", choice.provider} and current != "none":
+                model = client.current_model_id() if client is not None and hasattr(client, "current_model_id") else choice.model
+                vendor = {"openrouter": "OpenRouter", "deepseek": "DeepSeek", "doubao": "豆包"}.get(current, current)
+                self.provider_label.setText(f"当前模型：{vendor} / {model}" if model else f"当前模型：{vendor}")
+                return
+            self.provider_label.setText(f"当前模型：{choice.display_name}")
+            return
         model = ""
         if client is not None and hasattr(client, "current_model_id"):
             model = client.current_model_id()
-        tier_label = TIER_LABELS.get(self.model_tier, "好")
-        if current == "openrouter" and model:
-            self.provider_label.setText(f"当前模型：{tier_label} / OpenRouter / {model}")
-        elif current == "deepseek" and model:
-            self.provider_label.setText(f"当前模型：{tier_label} / DeepSeek / {model}")
-        elif current in {"openrouter", "deepseek"}:
-            self.provider_label.setText(f"当前模型：{tier_label} / {current}")
+        vendor = {"openrouter": "OpenRouter", "deepseek": "DeepSeek", "doubao": "豆包"}.get(current)
+        if vendor and model:
+            self.provider_label.setText(f"当前模型：{vendor} / {model}")
+        elif vendor:
+            self.provider_label.setText(f"当前模型：{vendor}")
         else:
             self.provider_label.setText("当前模型：未配置 Key")
 
     def _on_provider_failover(self, provider: str) -> None:
         self.set_provider(provider)
-        if provider == "openrouter":
-            self._log("DeepSeek 额度不足，已切换 OpenRouter")
+        vendor = {"openrouter": "OpenRouter", "deepseek": "DeepSeek", "doubao": "豆包"}.get(provider, provider)
+        self._log(f"额度不足，已切换到 {vendor}")
 
     def set_overlay_visible(self, visible: bool) -> None:
         self.app_settings.setValue("overlay/visible", visible)
@@ -391,18 +433,49 @@ class MainWindow(QMainWindow):
         self.app_settings.sync()
         self._log(f"右键全屏手势：{'开启' if enabled else '关闭'}")
 
+    def set_console_capture_excluded(self, enabled: bool) -> None:
+        self.app_settings.setValue("capture/hide_console", enabled)
+        self.app_settings.sync()
+        QTimer.singleShot(0, self._apply_console_capture_setting)
+
+    def _apply_console_capture_setting(self) -> None:
+        enabled = self.console_capture_toggle.isChecked()
+        ok, status = apply_window_capture_exclusion(self, enabled)
+        if sys.platform in {"darwin", "win32"} and not ok:
+            self._log(f"控制台捕获排除失败：{status}")
+
+    def _settings_text(self, key: str, default: str = "") -> str:
+        value = self.app_settings.value(key, default)
+        if value is None:
+            return default
+        if isinstance(value, bytes):
+            return value.decode("utf-8", "ignore")
+        data = getattr(value, "data", None)
+        if callable(data):
+            raw = data()
+            if isinstance(raw, (bytes, bytearray)):
+                return bytes(raw).decode("utf-8", "ignore")
+        return str(value)
+
     def _setup_workflow(self) -> None:
         try:
-            self.session = BackendApi(self.backend_url).create_session()
+            pair_token = valid_pair_token(self._settings_text("mobile/pair_token")) or secrets.token_urlsafe(32)
+            self.app_settings.setValue("mobile/pair_token", pair_token)
+            self.app_settings.sync()
+            self.session = BackendApi(self.backend_url).create_session(pair_token=pair_token)
+            if self.session.pair_token != pair_token:
+                self.app_settings.setValue("mobile/pair_token", self.session.pair_token)
+                self.app_settings.sync()
             self.publisher = DesktopWebSocketPublisher(self.backend_url, self.session.session_id)
             self.command_client = DesktopCommandClient(
                 self.backend_url,
                 self.session.session_id,
-                self._handle_desktop_command,
+                self.signals.desktop_command_received.emit,
             )
-            self.mobile_label.setText(f"手机端：{self.session.pair_url}")
-            self._set_qr(self.session.pair_url)
-            self._log(f"Mobile URL: {self.session.pair_url}")
+            pair_url = f"{self.public_url}/pair?t={self.session.pair_token}"
+            self.mobile_label.setText(f"手机端：{pair_url}")
+            self._set_qr(pair_url)
+            self._log(f"Mobile URL: {pair_url}")
         except Exception as exc:
             self.session = None
             self.publisher = None
@@ -428,7 +501,11 @@ class MainWindow(QMainWindow):
         if ai_client.current_provider == "none":
             self.save_status.setText("请至少填写一把 API Key 后保存")
             self.save_status.setStyleSheet("color: #d33;")
-        self.mouse_listener = MouseRoiListener(self._left_up, self._second_left_up, self._right_long)
+        self.mouse_listener = MouseRoiListener(
+            self.signals.mouse_long_left.emit,
+            self.signals.mouse_short_left.emit,
+            self.signals.mouse_long_right.emit,
+        )
         try:
             self.mouse_listener.start()
             self.workflow.start_capture()
@@ -437,14 +514,12 @@ class MainWindow(QMainWindow):
 
     def _left_up(self, x: int, y: int) -> None:
         if not self.region_gesture_enabled:
-            self._log("左键框选手势已关闭")
             return
         if self.workflow is not None:
             self.workflow.left_up(x, y)
 
     def _second_left_up(self, x: int, y: int) -> None:
         if not self.region_gesture_enabled:
-            self._log("左键框选手势已关闭")
             return
         if self.workflow is None or self.mouse_listener is None:
             return
@@ -461,7 +536,6 @@ class MainWindow(QMainWindow):
 
     def _right_long(self, x: int, y: int) -> None:
         if not self.fullscreen_gesture_enabled:
-            self._log("右键全屏手势已关闭")
             return
         self._capture_fullscreen_at(x, y)
 
@@ -559,7 +633,7 @@ class MainWindow(QMainWindow):
             payload = command.get("payload")
             tier = ""
             if isinstance(payload, dict):
-                tier = str(payload.get("tier") or "")
+                tier = str(payload.get("route") or payload.get("tier") or "")
             self.signals.model_tier_requested.emit(tier)
 
     def _gesture_hint_text(self) -> str:

@@ -41,6 +41,18 @@ def test_extract_stream_delta() -> None:
     assert OpenRouterVisionClient._extract_delta(data) == "hello"
 
 
+def test_extract_stream_delta_uses_reasoning_when_content_missing() -> None:
+    data = '{"choices":[{"delta":{"reasoning_content":"先看图"}}]}'
+
+    assert OpenRouterVisionClient._extract_delta(data) == "先看图"
+
+
+def test_extract_stream_delta_prefers_content_over_reasoning() -> None:
+    data = '{"choices":[{"delta":{"content":"答案：B","reasoning_content":"思考过程"}}]}'
+
+    assert OpenRouterVisionClient._extract_delta(data) == "答案：B"
+
+
 def test_parse_multi_question_text() -> None:
     result = parse_ai_result(
         "【第1题】TCP 特点\n答案：B\n解析：面向连接\n\n【第2题】UDP 特点\n答案：A\n解析：无连接"

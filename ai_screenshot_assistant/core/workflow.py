@@ -201,7 +201,7 @@ class AssistantWorkflow:
         choice = apply_tier(tier)
         payload = choice.to_payload() if hasattr(choice, "to_payload") else {"tier": str(tier)}
         self._publish("model.changed", uuid4().hex, payload)
-        self.on_status(f"模型档位：{payload.get('display_name') or payload.get('tier')}")
+        self.on_status(f"模型：{payload.get('display_name') or payload.get('tier')}")
         return payload
 
     def _debug_path(self) -> Path | None:

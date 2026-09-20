@@ -467,10 +467,12 @@ def test_set_model_tier_publishes_choice() -> None:
 
     payload = workflow.set_model_tier("中等")
 
-    assert payload["tier"] == "medium"
+    assert payload["tier"] == "openrouter-qwen-32b"
+    assert payload["route"] == "openrouter-qwen-32b"
     assert payload["model"] == "qwen/qwen3-vl-32b-instruct"
     assert publisher.events[-1]["type"] == "model.changed"
-    assert publisher.events[-1]["payload"]["label"] == "中等"
+    assert publisher.events[-1]["payload"]["label"] == "OpenRouter · qwen/qwen3-vl-32b-instruct"
+    assert "中等" not in publisher.events[-1]["payload"]["display_name"]
 
 
 def test_overlapping_analysis_is_rejected() -> None:

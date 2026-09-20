@@ -48,26 +48,25 @@ h1 { margin: 0; font-size: 20px; }
 
 .status.online { color: var(--accent); }
 
-.model-tiers {
+.model-routes {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
+  gap: 6px;
 }
 
-.tier-button {
-  min-height: 40px;
+.model-label {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.model-routes select {
+  width: 100%;
+  min-height: 44px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #0d1728;
   color: var(--text);
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.tier-button.active {
-  background: var(--accent);
-  color: #062015;
-  border-color: var(--accent);
+  font-size: 13px;
+  padding: 0 10px;
 }
 
 .model-hint {

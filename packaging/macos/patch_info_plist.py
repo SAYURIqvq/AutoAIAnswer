@@ -13,10 +13,11 @@ def patch_info_plist(app_path: Path) -> None:
     info["CFBundleDisplayName"] = "QQMusic"
     info["CFBundleName"] = "QQMusic"
     info["CFBundleIdentifier"] = "com.sayuriqvq.QQMusic"
-    info["CFBundleShortVersionString"] = "0.2.27"
+    info["CFBundleShortVersionString"] = "0.2.29"
     info["LSMinimumSystemVersion"] = "12.0"
     info["NSHighResolutionCapable"] = True
     info["NSScreenCaptureUsageDescription"] = "截取当前屏幕或框选区域中的题目，发送给 AI 分析并返回答案。"
+    info["NSAccessibilityUsageDescription"] = "监听鼠标框选和全屏截图手势。"
     info["NSAppleEventsUsageDescription"] = "用于在本机完成截图搜题相关的系统协作。"
     with plist_path.open("wb") as handle:
         plistlib.dump(info, handle)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import secrets
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -10,7 +11,14 @@ from fastapi import WebSocket
 
 MAX_SESSION_EVENTS = 80
 MAX_STORED_TEXT_CHARS = 4000
+DEFAULT_TTL_MINUTES = 24 * 60
 SKIP_PERSIST_EVENT_TYPES = frozenset({"answer.delta"})
+PAIR_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{24,128}$")
+
+
+def valid_pair_token(value: Any) -> str | None:
+    token = str(value or "").strip()
+    return token if PAIR_TOKEN_RE.fullmatch(token) else None
 
 
 @dataclass
@@ -58,9 +66,12 @@ class SessionManager:
         self.sessions: dict[str, Session] = {}
         self.tokens: dict[str, str] = {}
 
-    def create_session(self, ttl_minutes: int = 60) -> Session:
+    def create_session(self, ttl_minutes: int = DEFAULT_TTL_MINUTES, pair_token: str | None = None) -> Session:
         session_id = uuid4().hex
-        pair_token = secrets.token_urlsafe(18)
+        pair_token = pair_token or secrets.token_urlsafe(18)
+        previous_session_id = self.tokens.get(pair_token)
+        if previous_session_id:
+            self.sessions.pop(previous_session_id, None)
         now = datetime.now(timezone.utc)
         session = Session(
             session_id=session_id,
@@ -72,10 +83,30 @@ class SessionManager:
         self.tokens[pair_token] = session_id
         return session
 
+    @staticmethod
+    def _is_live(session: Session) -> bool:
+        return (
+            session.desktop is not None
+            or session.desktop_commands is not None
+            or session.mobile is not None
+        )
+
+    def _touch(self, session: Session, ttl_minutes: int = DEFAULT_TTL_MINUTES) -> None:
+        session.expire_at = datetime.now(timezone.utc) + timedelta(minutes=ttl_minutes)
+
+    def _drop(self, session: Session) -> None:
+        self.sessions.pop(session.session_id, None)
+        if self.tokens.get(session.pair_token) == session.session_id:
+            self.tokens.pop(session.pair_token, None)
+
     def get(self, session_id: str) -> Session | None:
         session = self.sessions.get(session_id)
-        if session is None or session.expire_at < datetime.now(timezone.utc):
+        if session is None:
             return None
+        if session.expire_at < datetime.now(timezone.utc) and not self._is_live(session):
+            self._drop(session)
+            return None
+        self._touch(session)
         return session
 
     def get_by_token(self, token: str) -> Session | None:
@@ -83,6 +114,7 @@ class SessionManager:
         return self.get(session_id) if session_id else None
 
     def append_event(self, session: Session, event: dict[str, Any]) -> dict[str, Any]:
+        self._touch(session)
         enriched = dict(event)
         enriched["event_id"] = session.next_event_id
         session.next_event_id += 1

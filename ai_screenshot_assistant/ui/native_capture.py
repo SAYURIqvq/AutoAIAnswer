@@ -14,10 +14,15 @@ if sys.platform == "win32":
         set_color_key_opacity,
         set_no_activate,
     )
+
+    def apply_window_capture_exclusion(target: object, enabled: bool = True) -> tuple[bool, str]:
+        hwnd = target if isinstance(target, int) else hwnd_from_widget(target)
+        return apply_capture_exclusion(hwnd, enabled)
 elif sys.platform == "darwin":
     from ai_screenshot_assistant.ui.macos_capture import (
         CHROMA_KEY_RGB,
         apply_capture_exclusion,
+        apply_window_capture_exclusion,
         hwnd_from_widget,
         is_excluded_from_capture,
         keep_overlay_fronted,
@@ -34,6 +39,9 @@ else:
         if not hwnd:
             return False, "窗口句柄尚未创建"
         return False, "当前平台不支持捕获排除"
+
+    def apply_window_capture_exclusion(target: object, enabled: bool = True) -> tuple[bool, str]:
+        return False, "当前平台不支持控制台捕获排除"
 
     def is_excluded_from_capture(hwnd: int) -> bool:
         return False

@@ -4,11 +4,11 @@ from pathlib import Path
 import json
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi import Body, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from ai_screenshot_assistant.backend.session_manager import manager
+from ai_screenshot_assistant.backend.session_manager import manager, valid_pair_token
 from ai_screenshot_assistant.core.messages import utc_now_iso
 
 
@@ -16,6 +16,24 @@ STATIC_DIR = Path(__file__).resolve().parents[1] / "web" / "static"
 
 app = FastAPI(title="AI Screenshot Assistant Backend")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+PAIR_COOKIE = "qqmusic_pair"
+
+
+def _render_mobile(session_id: str, pair_token: str) -> HTMLResponse:
+    html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    html = html.replace("__SESSION_ID__", session_id or "")
+    html = html.replace("__PAIR_TOKEN__", pair_token or "")
+    response = HTMLResponse(html)
+    if valid_pair_token(pair_token):
+        response.set_cookie(
+            PAIR_COOKIE,
+            pair_token,
+            max_age=60 * 60 * 24 * 30,
+            httponly=False,
+            samesite="lax",
+            path="/",
+        )
+    return response
 
 
 @app.get("/health")
@@ -24,8 +42,9 @@ async def health() -> dict[str, str]:
 
 
 @app.post("/sessions")
-async def create_session() -> dict[str, str]:
-    session = manager.create_session()
+async def create_session(payload: dict[str, Any] | None = Body(default=None)) -> dict[str, str]:
+    pair_token = valid_pair_token((payload or {}).get("pair_token"))
+    session = manager.create_session(pair_token=pair_token)
     return {
         "session_id": session.session_id,
         "pair_token": session.pair_token,
@@ -34,26 +53,48 @@ async def create_session() -> dict[str, str]:
     }
 
 
-@app.get("/pair")
-async def pair(t: str = Query(...)) -> HTMLResponse:
-    session = manager.get_by_token(t)
+@app.get("/session")
+async def session_lookup(t: str = Query("")) -> dict[str, Any]:
+    token = valid_pair_token(t)
+    if token is None:
+        return {"ok": False}
+    session = manager.get_by_token(token)
     if session is None:
+        return {"ok": False}
+    return {"ok": True, "session_id": session.session_id, "pair_token": session.pair_token}
+
+
+@app.get("/pair")
+async def pair(request: Request, t: str = Query("")):
+    if t:
+        token = valid_pair_token(t)
+        if token is None:
+            raise HTTPException(status_code=404, detail="Pair token is invalid or expired")
+    else:
+        token = valid_pair_token(request.cookies.get(PAIR_COOKIE))
+        if token:
+            return RedirectResponse(f"/pair?t={token}", status_code=302)
         raise HTTPException(status_code=404, detail="Pair token is invalid or expired")
-    html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
-    return HTMLResponse(html.replace("__SESSION_ID__", session.session_id))
+    session = manager.get_by_token(token)
+    return _render_mobile(session.session_id if session else "", token)
 
 
 @app.get("/mobile")
-async def mobile(session_id: str) -> HTMLResponse:
+async def mobile(request: Request, session_id: str) -> HTMLResponse:
     session = manager.get(session_id)
     if session is None:
+        cookie_token = valid_pair_token(request.cookies.get(PAIR_COOKIE))
+        if cookie_token:
+            return RedirectResponse(f"/pair?t={cookie_token}", status_code=302)
         raise HTTPException(status_code=404, detail="Session is invalid or expired")
-    html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
-    return HTMLResponse(html.replace("__SESSION_ID__", session.session_id))
+    return _render_mobile(session.session_id, session.pair_token)
 
 
 @app.get("/")
-async def root() -> FileResponse:
+async def root(request: Request):
+    token = valid_pair_token(request.cookies.get(PAIR_COOKIE)) or valid_pair_token(request.query_params.get("t"))
+    if token:
+        return RedirectResponse(f"/pair?t={token}", status_code=302)
     return FileResponse(STATIC_DIR / "index.html")
 
 
@@ -157,10 +198,11 @@ def _mobile_command_payload(data: dict[str, Any]) -> dict[str, Any]:
     raw_images = source_payload.get("images") or data.get("images")
     if isinstance(raw_images, list):
         payload["images"] = [str(image) for image in raw_images[:5] if isinstance(image, str)]
-    raw_tier = source_payload.get("tier") or data.get("tier")
+    raw_tier = source_payload.get("route") or source_payload.get("tier") or data.get("route") or data.get("tier")
     tier = str(raw_tier or "").strip()
     if tier:
-        payload["tier"] = tier[:32]
+        payload["tier"] = tier[:64]
+        payload["route"] = tier[:64]
     return payload
 
 

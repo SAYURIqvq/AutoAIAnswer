@@ -1,6 +1,7 @@
 import requests
 
 from ai_screenshot_assistant.ai.client import FailoverVisionClient, ProviderConfig
+from ai_screenshot_assistant.ai.models import DOUBAO_VISION_MODEL, ROUTE_DOUBAO_SEED_VISION
 
 
 class FakeClient:
@@ -22,8 +23,8 @@ def http_error(status: int) -> requests.HTTPError:
     return requests.HTTPError(f"HTTP {status}", response=response)
 
 
-def config(name: str, api_key: str = "key") -> ProviderConfig:
-    return ProviderConfig(name=name, api_key=api_key, base_url="https://example.test", model="vision")
+def config(name: str, api_key: str = "key", model: str = "vision") -> ProviderConfig:
+    return ProviderConfig(name=name, api_key=api_key, base_url="https://example.test", model=model)
 
 
 def test_deepseek_402_switches_to_openrouter_for_session() -> None:
@@ -57,18 +58,15 @@ def test_non_402_does_not_switch() -> None:
     assert client.openrouter.calls == 0
 
 
-def test_openrouter_402_does_not_loop_back() -> None:
-    client = FailoverVisionClient(config("DeepSeek"), config("OpenRouter"))
-    client.current_provider = "openrouter"
+def test_openrouter_402_falls_back_to_deepseek() -> None:
+    changes: list[str] = []
+    client = FailoverVisionClient(config("DeepSeek"), config("OpenRouter"), changes.append)
     client.openrouter = FakeClient(error=http_error(402))
+    client.deepseek = FakeClient(chunks=["答案：C"])
 
-    try:
-        list(client.analyze_image_stream(b"png"))
-    except requests.HTTPError as exc:
-        assert exc.response.status_code == 402
-    else:
-        raise AssertionError("OpenRouter 402 should propagate")
-    assert client.current_provider == "openrouter"
+    assert list(client.analyze_image_stream(b"png")) == ["答案：C"]
+    assert client.current_provider == "deepseek"
+    assert changes == ["deepseek"]
 
 
 def test_openrouter_only_key_is_used() -> None:
@@ -120,10 +118,42 @@ def test_switching_tier_updates_provider_and_model() -> None:
 
     choice = client.apply_model_tier("medium")
 
-    assert choice.tier == "medium"
+    assert choice.tier == "openrouter-qwen-32b"
     assert client.current_provider == "openrouter"
     assert client.current_model_id() == "qwen/qwen3-vl-32b-instruct"
     assert changes == []
+
+
+def test_doubao_route_uses_ark_model() -> None:
+    client = FailoverVisionClient(
+        config("DeepSeek"),
+        config("OpenRouter"),
+        model_tier=ROUTE_DOUBAO_SEED_VISION,
+        doubao=config("Doubao", model=DOUBAO_VISION_MODEL),
+    )
+
+    assert client.current_provider == "doubao"
+    assert client.current_model_id() == DOUBAO_VISION_MODEL
+    assert client.doubao.provider.model == DOUBAO_VISION_MODEL
+
+
+def test_doubao_402_falls_back_to_openrouter() -> None:
+    changes: list[str] = []
+    client = FailoverVisionClient(
+        config("DeepSeek"),
+        config("OpenRouter"),
+        changes.append,
+        model_tier=ROUTE_DOUBAO_SEED_VISION,
+        doubao=config("Doubao"),
+    )
+    client.doubao = FakeClient(error=http_error(402))
+    client.openrouter = FakeClient(chunks=["答案：豆包备份"])
+    client.deepseek = FakeClient(chunks=["unused"])
+
+    assert list(client.analyze_image_stream(b"png")) == ["答案：豆包备份"]
+    assert client.current_provider == "openrouter"
+    assert changes == ["openrouter"]
+    assert client.deepseek.calls == 0
 
 
 
@@ -135,8 +165,8 @@ def test_deepseek_402_without_openrouter_key_does_not_switch() -> None:
     try:
         list(client.analyze_image_stream(b"png"))
     except RuntimeError as exc:
-        assert "未配置 OpenRouter" in str(exc)
+        assert "没有其他可用 Key" in str(exc)
     else:
-        raise AssertionError("402 without OpenRouter key should raise")
+        raise AssertionError("402 without other keys should raise")
     assert client.current_provider == "deepseek"
     assert client.openrouter.calls == 0
