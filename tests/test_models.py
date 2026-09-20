@@ -1,12 +1,21 @@
 from ai_screenshot_assistant.ai.models import (
     DEEPSEEK_VISION_MODEL,
+    DOUBAO_LITE_MODEL,
+    DOUBAO_MINI_MODEL,
+    DOUBAO_PRO_MODEL,
     DOUBAO_VISION_MODEL,
     OPENROUTER_TIER_MODELS,
     OPENROUTER_QWEN_235B,
     OPENROUTER_QWEN_32B,
     OPENROUTER_QWEN_8B,
+    OPENROUTER_DEEPSEEK_FLASH,
     ROUTE_DEEPSEEK_FLASH,
+    ROUTE_DOUBAO_LITE,
+    ROUTE_DOUBAO_MINI,
+    ROUTE_DOUBAO_PRO,
     ROUTE_DOUBAO_SEED_VISION,
+    ROUTE_DOUBAO_TURBO,
+    ROUTE_OPENROUTER_DEEPSEEK_FLASH,
     ROUTE_OPENROUTER_QWEN_235B,
     ROUTE_OPENROUTER_QWEN_32B,
     ROUTE_OPENROUTER_QWEN_8B,
@@ -24,15 +33,20 @@ def test_normalize_model_tier_accepts_chinese_labels() -> None:
     assert normalize_model_tier("unknown") == ROUTE_OPENROUTER_QWEN_235B
     assert normalize_model_tier("good") == ROUTE_OPENROUTER_QWEN_235B
     assert normalize_model_tier("openrouter-qwen-8b") == ROUTE_OPENROUTER_QWEN_8B
-    assert normalize_model_tier("doubao") == ROUTE_DOUBAO_SEED_VISION
-    assert normalize_model_tier("doubao-seed-1-6-vision") == ROUTE_DOUBAO_SEED_VISION
-    assert normalize_model_tier("doubao-seed-2-1-turbo") == ROUTE_DOUBAO_SEED_VISION
-    assert normalize_model_tier("豆包") == ROUTE_DOUBAO_SEED_VISION
+    assert normalize_model_tier("doubao") == ROUTE_DOUBAO_TURBO
+    assert normalize_model_tier("doubao-seed-vision") == ROUTE_DOUBAO_TURBO
+    assert normalize_model_tier("doubao-seed-1-6-vision") == ROUTE_DOUBAO_TURBO
+    assert normalize_model_tier("doubao-seed-2-1-turbo") == ROUTE_DOUBAO_TURBO
+    assert normalize_model_tier("doubao-seed-2-0-mini") == ROUTE_DOUBAO_MINI
+    assert normalize_model_tier("doubao-seed-2-0-lite") == ROUTE_DOUBAO_LITE
+    assert normalize_model_tier("doubao-seed-2-1-pro") == ROUTE_DOUBAO_PRO
+    assert normalize_model_tier("豆包") == ROUTE_DOUBAO_TURBO
 
 
 def test_only_chinese_models_are_allowed() -> None:
     assert is_chinese_model("qwen/qwen3-vl-235b-a22b-thinking")
     assert is_chinese_model("deepseek-flash")
+    assert is_chinese_model(OPENROUTER_DEEPSEEK_FLASH)
     assert is_chinese_model(DOUBAO_VISION_MODEL)
     assert is_chinese_model("z-ai/glm-4.5v") is True
     assert is_chinese_model("openai/gpt-4o") is False
@@ -59,7 +73,7 @@ def test_medium_tier_uses_qwen_32b() -> None:
     assert choice.provider == "openrouter"
     assert choice.route == ROUTE_OPENROUTER_QWEN_32B
     assert choice.model == OPENROUTER_QWEN_32B
-    assert choice.display_name == f"OpenRouter / {OPENROUTER_QWEN_32B}"
+    assert choice.display_name == f"OpenRouter / {OPENROUTER_QWEN_32B}（较快 / 准确较好）"
 
 
 def test_simple_tier_uses_deepseek_flash_when_available() -> None:
@@ -68,14 +82,34 @@ def test_simple_tier_uses_deepseek_flash_when_available() -> None:
     assert choice.provider == "deepseek"
     assert choice.route == ROUTE_DEEPSEEK_FLASH
     assert choice.model == DEEPSEEK_VISION_MODEL
-    assert choice.display_name == f"DeepSeek / {DEEPSEEK_VISION_MODEL}"
+    assert choice.display_name == f"DeepSeek / {DEEPSEEK_VISION_MODEL}（快 / 准确一般）"
 
 
-def test_simple_tier_falls_back_to_qwen_8b_without_deepseek() -> None:
+def test_simple_tier_falls_back_to_openrouter_deepseek_without_official_key() -> None:
     choice = resolve_model_choice("simple", has_deepseek=False, has_openrouter=True)
 
     assert choice.provider == "openrouter"
-    assert choice.model == OPENROUTER_QWEN_8B
+    assert choice.model == OPENROUTER_DEEPSEEK_FLASH
+
+
+def test_openrouter_deepseek_flash_uses_openrouter_key() -> None:
+    missing = resolve_model_choice(
+        ROUTE_OPENROUTER_DEEPSEEK_FLASH,
+        has_deepseek=True,
+        has_openrouter=False,
+    )
+    ready = resolve_model_choice(
+        ROUTE_OPENROUTER_DEEPSEEK_FLASH,
+        has_deepseek=False,
+        has_openrouter=True,
+    )
+
+    assert missing.provider == "deepseek"
+    assert missing.model == DEEPSEEK_VISION_MODEL
+    assert ready.provider == "openrouter"
+    assert ready.model == OPENROUTER_DEEPSEEK_FLASH
+    assert ready.openrouter_model == OPENROUTER_DEEPSEEK_FLASH
+    assert "deepseek-v4.1-flash" in ready.label
 
 
 def test_explicit_qwen_8b_route() -> None:
@@ -83,7 +117,7 @@ def test_explicit_qwen_8b_route() -> None:
 
     assert choice.provider == "openrouter"
     assert choice.model == OPENROUTER_QWEN_8B
-    assert choice.label == f"OpenRouter · {OPENROUTER_QWEN_8B}"
+    assert choice.label == f"OpenRouter · {OPENROUTER_QWEN_8B}（最快 / 准确一般）"
 
 
 def test_doubao_route_requires_doubao_key() -> None:
@@ -104,8 +138,30 @@ def test_doubao_route_requires_doubao_key() -> None:
     assert "未配置 Key" in missing.display_name
     assert ready.provider == "doubao"
     assert ready.model == DOUBAO_VISION_MODEL
-    assert ready.display_name == f"豆包 / {DOUBAO_VISION_MODEL}"
-    assert ready.label == f"豆包 · {DOUBAO_VISION_MODEL}"
+    assert ready.doubao_model == DOUBAO_VISION_MODEL
+    assert ready.display_name == f"豆包 / {DOUBAO_VISION_MODEL}（快 / 准确较好）"
+    assert ready.label == f"豆包 Turbo · {DOUBAO_VISION_MODEL}（快 / 准确较好）"
+
+
+def test_each_doubao_route_selects_matching_ark_model() -> None:
+    mapping = {
+        ROUTE_DOUBAO_MINI: (DOUBAO_MINI_MODEL, "最快 / 准确一般"),
+        ROUTE_DOUBAO_LITE: (DOUBAO_LITE_MODEL, "较快 / 准确中等"),
+        ROUTE_DOUBAO_TURBO: (DOUBAO_VISION_MODEL, "快 / 准确较好"),
+        ROUTE_DOUBAO_PRO: (DOUBAO_PRO_MODEL, "最准 / 较慢"),
+    }
+    for route_id, (model, trait) in mapping.items():
+        choice = resolve_model_choice(
+            route_id,
+            has_deepseek=False,
+            has_openrouter=False,
+            has_doubao=True,
+        )
+        assert choice.provider == "doubao"
+        assert choice.model == model
+        assert choice.doubao_model == model
+        assert trait in choice.label
+        assert trait in choice.display_name
 
 
 def test_route_options_list_explicit_models() -> None:
@@ -114,19 +170,31 @@ def test_route_options_list_explicit_models() -> None:
     labels = [item[1] for item in options]
     models = [item[2] for item in options]
     assert ids == [
-        ROUTE_DOUBAO_SEED_VISION,
+        ROUTE_DOUBAO_MINI,
+        ROUTE_DOUBAO_LITE,
+        ROUTE_DOUBAO_TURBO,
+        ROUTE_DOUBAO_PRO,
         ROUTE_OPENROUTER_QWEN_235B,
         ROUTE_OPENROUTER_QWEN_32B,
         ROUTE_OPENROUTER_QWEN_8B,
+        ROUTE_OPENROUTER_DEEPSEEK_FLASH,
         ROUTE_DEEPSEEK_FLASH,
     ]
     assert "好" not in labels
     assert "中等" not in labels
     assert "简单" not in labels
-    assert "豆包" in labels
-    assert OPENROUTER_QWEN_235B in models
-    assert DEEPSEEK_VISION_MODEL in models
-    assert DOUBAO_VISION_MODEL in models
+    assert "豆包 Mini" in labels
+    assert "豆包 Pro" in labels
+    assert "OpenRouter DeepSeek" in labels
+    assert "DeepSeek 官方" in labels
+    assert OPENROUTER_QWEN_235B in models[4]
+    assert "会思考" in models[4]
+    assert OPENROUTER_DEEPSEEK_FLASH in models[-2]
+    assert DEEPSEEK_VISION_MODEL in models[-1]
+    assert DOUBAO_MINI_MODEL in models[0]
+    assert DOUBAO_VISION_MODEL in models[2]
+    assert DOUBAO_PRO_MODEL in models[3]
+    assert all("（" in item[2] and "）" in item[2] for item in options)
 
 
 def test_all_configured_openrouter_tiers_are_chinese_qwen_models() -> None:

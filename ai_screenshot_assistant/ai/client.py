@@ -14,6 +14,7 @@ from PIL import Image, UnidentifiedImageError
 from ai_screenshot_assistant.ai.models import (
     DEFAULT_MODEL_TIER,
     DOUBAO_VISION_MODEL,
+    DOUBAO_CHAT_COMPLETIONS_MODELS,
     ModelChoice,
     PROVIDER_LABELS,
     resolve_model_choice,
@@ -149,8 +150,13 @@ class VisionClient:
         yield from self.analyze_images_stream([png_bytes], user_text=user_text, conversation=conversation)
 
     def uses_responses_api(self) -> bool:
-        # Seed 1.6 Vision 官方示例走 /responses；Seed 2.1 Turbo 走 /chat/completions。
-        return "seed-1-6-vision" in self.provider.model.lower()
+        model = self.provider.model.lower()
+        if model in {item.lower() for item in DOUBAO_CHAT_COMPLETIONS_MODELS} or "turbo" in model:
+            return False
+        return self._is_doubao() or "seed-1-6-vision" in model
+
+    def _is_doubao(self) -> bool:
+        return "doubao" in self.provider.name.lower() or "volces.com" in self.provider.base_url.lower()
 
     def analyze_images_stream(
         self,
@@ -206,11 +212,14 @@ class VisionClient:
                     }
                 )
             content.append({"type": "input_text", "text": prompt})
-            return {
+            payload = {
                 "model": self.provider.model,
                 "stream": True,
                 "input": [{"role": "user", "content": content}],
             }
+            if self._is_doubao():
+                payload["thinking"] = {"type": "disabled"}
+            return payload
         content: list[dict[str, Any]] = []
         for image_bytes, mime_type in images:
             image_b64 = base64.b64encode(image_bytes).decode("ascii")
@@ -221,7 +230,9 @@ class VisionClient:
             "stream": True,
             "messages": [{"role": "user", "content": content}],
         }
-        if "openrouter.ai" in self.provider.base_url and "thinking" not in self.provider.model.lower():
+        if self._is_doubao():
+            payload["thinking"] = {"type": "disabled"}
+        elif "openrouter.ai" in self.provider.base_url and "thinking" not in self.provider.model.lower():
             payload["reasoning_effort"] = "none"
         return payload
 
@@ -261,11 +272,7 @@ class VisionClient:
             return ""
         event_type = str(parsed.get("type") or "")
         event_delta = parsed.get("delta")
-        if event_type in {
-            "response.output_text.delta",
-            "response.reasoning_summary_text.delta",
-            "response.reasoning_text.delta",
-        } and isinstance(event_delta, str):
+        if event_type == "response.output_text.delta" and isinstance(event_delta, str):
             return event_delta
         choices = parsed.get("choices") or []
         if not choices:
@@ -275,9 +282,6 @@ class VisionClient:
         content = delta.get("content")
         if isinstance(content, str) and content:
             return content
-        reasoning = delta.get("reasoning_content")
-        if isinstance(reasoning, str) and reasoning:
-            return reasoning
         message = first.get("message") or {}
         message_content = message.get("content")
         return message_content if isinstance(message_content, str) else ""

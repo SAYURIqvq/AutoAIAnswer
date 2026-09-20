@@ -41,11 +41,15 @@ def test_mobile_page_exposes_explicit_model_routes_and_clear_chat() -> None:
     css = (STATIC / "style.css").read_text(encoding="utf-8")
 
     assert 'id="model-route"' in html
-    assert "OpenRouter · qwen/qwen3-vl-235b-a22b-thinking" in html
-    assert "豆包 · doubao-seed-2-1-turbo-260628" in html
-    assert "OpenRouter · qwen/qwen3-vl-32b-instruct" in html
-    assert "OpenRouter · qwen/qwen3-vl-8b-instruct" in html
-    assert "DeepSeek · deepseek-flash" in html
+    assert "OpenRouter · qwen/qwen3-vl-235b-a22b-thinking（最准 / 较慢 / 会思考）" in html
+    assert "豆包 Turbo · doubao-seed-2-1-turbo-260628（快 / 准确较好）" in html
+    assert "豆包 Mini · doubao-seed-2-0-mini-260428（最快 / 准确一般）" in html
+    assert "豆包 Lite · doubao-seed-2-0-lite-260428（较快 / 准确中等）" in html
+    assert "豆包 Pro · doubao-seed-2-1-pro-260915（最准 / 较慢）" in html
+    assert "OpenRouter · qwen/qwen3-vl-32b-instruct（较快 / 准确较好）" in html
+    assert "OpenRouter · qwen/qwen3-vl-8b-instruct（最快 / 准确一般）" in html
+    assert "OpenRouter DeepSeek · deepseek/deepseek-v4.1-flash（快 / 准确较好）" in html
+    assert "DeepSeek 官方 · deepseek-flash（快 / 准确一般）" in html
     assert 'data-tier="good"' not in html
     assert ">好<" not in html
     assert ">中等<" not in html
@@ -56,6 +60,9 @@ def test_mobile_page_exposes_explicit_model_routes_and_clear_chat() -> None:
     assert "添加到照片" in html
     assert "command.clear_conversation" in js
     assert "command.set_model_tier" in js
+    assert "sendModelTier(currentTier)" not in js
+    assert "分析失败：" in js
+    assert "chat: true, conversation: true" in js
     assert "normalizeRoute" in js
     assert "saveImagesToAlbum" in js
     assert "selectedAlbumItems" in js
@@ -102,7 +109,7 @@ def test_desktop_main_window_uses_quiet_zone_qr_and_memory_caps() -> None:
     assert "SetMinimumSize" in source
     assert "FastTransformation" in source
     assert "addWidget(self.logs, 1)" not in source
-    assert "setMaximumBlockCount(80)" in source
+    assert "setMaximumBlockCount(400)" in source
     assert "command.clear_conversation" in source
     assert "command.set_model_tier" in source
     assert "openrouter_model_input" not in source

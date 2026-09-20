@@ -61,7 +61,12 @@ async def session_lookup(t: str = Query("")) -> dict[str, Any]:
     session = manager.get_by_token(token)
     if session is None:
         return {"ok": False}
-    return {"ok": True, "session_id": session.session_id, "pair_token": session.pair_token}
+    return {
+        "ok": True,
+        "session_id": session.session_id,
+        "pair_token": session.pair_token,
+        "desktop_ready": session.desktop_commands is not None,
+    }
 
 
 @app.get("/pair")
@@ -173,11 +178,23 @@ async def _handle_mobile_message(session: Any, message: str) -> None:
         "command.set_model_tier",
     }:
         return
+    payload = _mobile_command_payload(data)
     if session.desktop_commands is not None:
-        payload = _mobile_command_payload(data)
         await session.desktop_commands.send_json(
             _system_event(session.session_id, command_type, payload)
         )
+        return
+    await _send_mobile(
+        session,
+        _system_event(
+            session.session_id,
+            "answer.error",
+            {
+                "message": "电脑端命令通道未连接。请只保留一个 QQMusic 窗口，然后刷新手机页。",
+            },
+            request_id=str(payload.get("client_request_id") or "system"),
+        ),
+    )
 
 
 def _mobile_command_payload(data: dict[str, Any]) -> dict[str, Any]:
@@ -206,11 +223,16 @@ def _mobile_command_payload(data: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
-def _system_event(session_id: str, event_type: str, payload: dict[str, Any]) -> dict[str, Any]:
+def _system_event(
+    session_id: str,
+    event_type: str,
+    payload: dict[str, Any],
+    request_id: str = "system",
+) -> dict[str, Any]:
     return {
         "type": event_type,
         "session_id": session_id,
-        "request_id": "system",
+        "request_id": request_id,
         "timestamp": utc_now_iso(),
         "payload": payload,
     }

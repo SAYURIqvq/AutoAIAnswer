@@ -23,20 +23,15 @@ from ai_screenshot_assistant.backend.embedded import EmbeddedBackend
 from ai_screenshot_assistant.config import settings
 from ai_screenshot_assistant.resources import app_icon_path
 from ai_screenshot_assistant.ui.main_window import MainWindow
+from ai_screenshot_assistant.utils.app_log import logs_directory, write_app_log
 
 _crash_log = None
+_windows_mutex = None
 
 
 def _install_crash_logging() -> None:
     global _crash_log
-    if sys.platform == "darwin":
-        log_dir = Path.home() / "Library" / "Logs" / "QQMusic"
-    elif sys.platform == "win32":
-        local_app_data = Path(os.getenv("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
-        log_dir = local_app_data / "QQMusic" / "Logs"
-    else:
-        log_dir = Path(os.getenv("XDG_STATE_HOME", Path.home() / ".local" / "state")) / "QQMusic"
-    log_dir.mkdir(parents=True, exist_ok=True)
+    log_dir = logs_directory()
     _crash_log = (log_dir / "crash.log").open("a", encoding="utf-8")
     _crash_log.write(f"\n--- launch {datetime.now().isoformat()} pid={os.getpid()} ---\n")
     _crash_log.flush()
@@ -61,17 +56,31 @@ def _restore_hint() -> str:
     return "请从托盘恢复窗口。"
 
 
+def _acquire_windows_mutex() -> bool:
+    global _windows_mutex
+    if sys.platform != "win32":
+        return True
+    import ctypes
+
+    kernel32 = ctypes.windll.kernel32
+    _windows_mutex = kernel32.CreateMutexW(None, True, "Local\\com.sayuriqvq.QQMusic.single")
+    return kernel32.GetLastError() != 183
+
+
 def main() -> int:
     _install_crash_logging()
     app = QApplication(sys.argv)
+    if not _acquire_windows_mutex():
+        write_app_log("refused second instance (windows mutex)")
+        QMessageBox.information(None, "QQMusic", f"QQMusic 已经在运行，{_restore_hint()}")
+        return 0
     lock_dir = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.TempLocation)
     instance_lock = QLockFile(str(Path(lock_dir) / "com.sayuriqvq.QQMusic.lock"))
-    instance_lock.setStaleLockTime(5000)
+    instance_lock.setStaleLockTime(0)
     if not instance_lock.tryLock(250):
-        instance_lock.removeStaleLockFile()
-        if not instance_lock.tryLock(250):
-            QMessageBox.information(None, "QQMusic", f"QQMusic 已经在运行，{_restore_hint()}")
-            return 0
+        write_app_log("refused second instance (file lock)")
+        QMessageBox.information(None, "QQMusic", f"QQMusic 已经在运行，{_restore_hint()}")
+        return 0
 
     icon_path = app_icon_path()
     if icon_path is not None:

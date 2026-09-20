@@ -60,7 +60,7 @@ class DesktopWebSocketPublisher:
             raise RuntimeError("Mobile publisher is closed")
         future: Future[None] = Future()
         self._queue.put(_PendingEvent(event=event, future=future))
-        future.result(timeout=15)
+        future.result(timeout=45)
 
     def close(self) -> None:
         if self._closed:

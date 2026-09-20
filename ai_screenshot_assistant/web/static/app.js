@@ -76,19 +76,28 @@
     low: "deepseek-flash",
     easy: "deepseek-flash",
     "简单": "deepseek-flash",
-    doubao: "doubao-seed-vision",
-    "豆包": "doubao-seed-vision",
-    "doubao-seed-1-6-vision": "doubao-seed-vision",
-    "doubao-seed-1-6-vision-250815": "doubao-seed-vision",
-    "doubao-seed-2-1-turbo": "doubao-seed-vision",
-    "doubao-seed-2-1-turbo-260628": "doubao-seed-vision"
+    doubao: "doubao-seed-2-1-turbo",
+    "豆包": "doubao-seed-2-1-turbo",
+    "doubao-seed-vision": "doubao-seed-2-1-turbo",
+    "doubao-seed-1-6-vision": "doubao-seed-2-1-turbo",
+    "doubao-seed-1-6-vision-250815": "doubao-seed-2-1-turbo",
+    "doubao-seed-2-0-mini-260428": "doubao-seed-2-0-mini",
+    "doubao-seed-2-0-lite-260428": "doubao-seed-2-0-lite",
+    "doubao-seed-2-1-turbo-260628": "doubao-seed-2-1-turbo",
+    "doubao-seed-2-1-pro-260915": "doubao-seed-2-1-pro",
+    "deepseek/deepseek-v4.1-flash": "openrouter-deepseek-flash",
+    "openrouter-deepseek": "openrouter-deepseek-flash"
   };
   const knownRoutes = {
-    "doubao-seed-vision": "豆包 / doubao-seed-2-1-turbo-260628",
-    "openrouter-qwen-235b": "OpenRouter / qwen/qwen3-vl-235b-a22b-thinking",
-    "openrouter-qwen-32b": "OpenRouter / qwen/qwen3-vl-32b-instruct",
-    "openrouter-qwen-8b": "OpenRouter / qwen/qwen3-vl-8b-instruct",
-    "deepseek-flash": "DeepSeek / deepseek-flash"
+    "doubao-seed-2-0-mini": "豆包 Mini / doubao-seed-2-0-mini-260428（最快 / 准确一般）",
+    "doubao-seed-2-0-lite": "豆包 Lite / doubao-seed-2-0-lite-260428（较快 / 准确中等）",
+    "doubao-seed-2-1-turbo": "豆包 Turbo / doubao-seed-2-1-turbo-260628（快 / 准确较好）",
+    "doubao-seed-2-1-pro": "豆包 Pro / doubao-seed-2-1-pro-260915（最准 / 较慢）",
+    "openrouter-qwen-235b": "OpenRouter / qwen/qwen3-vl-235b-a22b-thinking（最准 / 较慢 / 会思考）",
+    "openrouter-qwen-32b": "OpenRouter / qwen/qwen3-vl-32b-instruct（较快 / 准确较好）",
+    "openrouter-qwen-8b": "OpenRouter / qwen/qwen3-vl-8b-instruct（最快 / 准确一般）",
+    "openrouter-deepseek-flash": "OpenRouter DeepSeek / deepseek/deepseek-v4.1-flash（快 / 准确较好）",
+    "deepseek-flash": "DeepSeek 官方 / deepseek-flash（快 / 准确一般）"
   };
   let currentTier = normalizeRoute(storageGet(modelTierKey) || "openrouter-qwen-235b");
   const maxScreenshots = 5;
@@ -572,13 +581,14 @@
   }
 
   function failAssistantMessage(message) {
-    if (activeAssistantBubble) {
-      renderFormattedText(activeAssistantBubble, `错误：${message || "模型调用失败"}`);
-      activeChatRequestId = null;
-      activeAssistantBubble = null;
-      activeAssistantText = "";
-      chatList.scrollTop = chatList.scrollHeight;
+    if (!activeAssistantBubble) {
+      startAssistantMessage(activeChatRequestId || nextRequestId("chat"));
     }
+    renderFormattedText(activeAssistantBubble, `错误：${message || "模型调用失败"}`);
+    activeChatRequestId = null;
+    activeAssistantBubble = null;
+    activeAssistantText = "";
+    chatList.scrollTop = chatList.scrollHeight;
   }
 
   function isOutdatedAnswerEvent(event) {
@@ -647,12 +657,13 @@
         return;
       }
       buffer = "";
-      failAssistantMessage(payload.message);
-      setOutput(`错误：${payload.message || "模型调用失败"}`);
+      const errorText = payload.message || "模型调用失败";
+      failAssistantMessage(errorText);
+      setOutput(`错误：${errorText}`);
       if (event.request_id === activeDirectRequestId) {
         activeDirectRequestId = null;
       }
-      setSelectionStatus("error", "分析失败，可以重新框选或全屏截题");
+      setSelectionStatus("error", `分析失败：${errorText}`);
     } else if (event.type === "conversation.cleared") {
       resetChatUi();
     } else if (event.type === "model.changed") {
@@ -730,7 +741,6 @@
         reconnectTimer = null;
       }
       setConnectionStatus("电脑已连接", true);
-      sendModelTier(currentTier);
     };
     socket.onmessage = function (message) {
       const event = JSON.parse(message.data);
@@ -751,14 +761,19 @@
     if (!socket || socket.readyState !== WebSocket.OPEN) {
       return;
     }
-    activeDirectRequestId = nextRequestId("fullscreen");
+    const requestId = nextRequestId("fullscreen");
+    activeDirectRequestId = requestId;
+    activeChatRequestId = requestId;
+    activeAssistantBubble = null;
+    activeAssistantText = "";
     buffer = "";
+    appendMessage("user", "请根据当前屏幕作答", 1);
     setOutput("分析中…");
     fullscreenButton.disabled = true;
     setSelectionStatus("capturing", "已请求电脑截取全屏");
     socket.send(JSON.stringify({
       type: "command.fullscreen",
-      payload: { client_request_id: activeDirectRequestId }
+      payload: { client_request_id: requestId, chat: true, conversation: true }
     }));
     setTimeout(function () {
       if (socket && socket.readyState === WebSocket.OPEN) {

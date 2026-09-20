@@ -14,6 +14,7 @@ from ai_screenshot_assistant.config import Settings, settings
 from ai_screenshot_assistant.core.conversation import cap_conversation_memory
 from ai_screenshot_assistant.core.messages import Event
 from ai_screenshot_assistant.capture.roi import Roi, RoiStateMachine
+from ai_screenshot_assistant.utils.app_log import write_app_log
 
 
 class CapturePort(Protocol):
@@ -318,10 +319,16 @@ class AssistantWorkflow:
 
     def _fail(self, message: str, request_id: str | None = None) -> None:
         request_id = request_id or uuid4().hex
-        self._publish("answer.error", request_id, {"message": message})
-        self._publish_selection_status("error", "分析失败，可以重新框选或全屏截题")
-        self.on_stream_error(message)
-        self.on_error(message)
+        detail = (message or "模型调用失败").strip()
+        status = f"分析失败：{detail}" if len(detail) <= 160 else f"分析失败：{detail[:157]}..."
+        try:
+            write_app_log(f"AI error request={request_id} {detail}")
+        except Exception:
+            pass
+        self._publish("answer.error", request_id, {"message": detail})
+        self._publish_selection_status("error", status)
+        self.on_stream_error(detail)
+        self.on_error(detail)
 
     def _publish_selection_status(self, state: str, message: str) -> None:
         self._publish("selection.status", uuid4().hex, {"state": state, "message": message})

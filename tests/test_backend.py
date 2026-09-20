@@ -24,8 +24,8 @@ def test_create_session_reuses_requested_pair_token() -> None:
     second = client.post("/sessions", json={"pair_token": token}).json()
 
     assert first["pair_url"] == second["pair_url"] == f"/pair?t={token}"
-    assert first["session_id"] != second["session_id"]
-    assert client.get(first["mobile_url"]).status_code == 404
+    assert first["session_id"] == second["session_id"]
+    assert client.get(first["mobile_url"]).status_code == 200
     assert client.get(second["pair_url"]).status_code == 200
 
 
@@ -211,6 +211,34 @@ def test_mobile_capture_fullscreen_command_reaches_desktop_command_socket() -> N
 
     assert command["type"] == "command.capture_fullscreen"
     assert command["payload"] == {"source": "mobile"}
+
+
+def test_mobile_command_without_desktop_reports_error() -> None:
+    client = TestClient(app)
+    session = client.post("/sessions").json()
+    session_id = session["session_id"]
+
+    with client.websocket_connect(f"/ws/mobile/{session_id}") as mobile:
+        mobile.receive_json()
+        mobile.send_text(
+            '{"type":"command.fullscreen","payload":{"client_request_id":"fullscreen-1","chat":true}}'
+        )
+        event = mobile.receive_json()
+
+    assert event["type"] == "answer.error"
+    assert event["request_id"] == "fullscreen-1"
+    assert "命令通道" in event["payload"]["message"]
+
+
+def test_session_lookup_reports_desktop_ready_flag() -> None:
+    client = TestClient(app)
+    token = "desktop_ready_token_abcdef123456"
+    created = client.post("/sessions", json={"pair_token": token}).json()
+    lookup = client.get(f"/session?t={token}").json()
+
+    assert lookup["ok"] is True
+    assert lookup["session_id"] == created["session_id"]
+    assert lookup["desktop_ready"] is False
 
 
 def test_mobile_submit_screenshots_forwards_images_without_text() -> None:

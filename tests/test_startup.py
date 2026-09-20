@@ -20,7 +20,9 @@ def test_main_uses_loopback_for_desktop_and_lan_for_qr() -> None:
     source = (ROOT / "main.py").read_text(encoding="utf-8")
     assert "backend.local_url" in source
     assert "public_url=backend.url" in source
-    assert "removeStaleLockFile" in source
+    assert "Local\\\\com.sayuriqvq.QQMusic.single" in source
+    assert "setStaleLockTime(0)" in source
+    assert "removeStaleLockFile" not in source
 
 
 def test_macos_packaging_includes_pynput() -> None:

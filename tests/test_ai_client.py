@@ -11,6 +11,7 @@ from ai_screenshot_assistant.ai.client import (
     _prepare_image_for_album,
     parse_ai_result,
 )
+from ai_screenshot_assistant.ai.prompt import VISION_PROMPT
 
 
 def test_parse_json_ai_result() -> None:
@@ -19,6 +20,13 @@ def test_parse_json_ai_result() -> None:
     assert result.answer == "B"
     assert result.reason == "because"
     assert result.confidence == "0.95"
+
+
+def test_shared_vision_prompt_forbids_deep_thinking() -> None:
+    assert "不要深度思考" in VISION_PROMPT
+    assert "不要输出思考过程" in VISION_PROMPT
+    assert "答案：" in VISION_PROMPT
+    assert "解析：" in VISION_PROMPT
 
 
 def test_parse_plain_text_ai_result() -> None:
@@ -41,16 +49,22 @@ def test_extract_stream_delta() -> None:
     assert OpenRouterVisionClient._extract_delta(data) == "hello"
 
 
-def test_extract_stream_delta_uses_reasoning_when_content_missing() -> None:
+def test_extract_stream_delta_ignores_reasoning() -> None:
     data = '{"choices":[{"delta":{"reasoning_content":"先看图"}}]}'
 
-    assert OpenRouterVisionClient._extract_delta(data) == "先看图"
+    assert OpenRouterVisionClient._extract_delta(data) == ""
 
 
 def test_extract_stream_delta_prefers_content_over_reasoning() -> None:
     data = '{"choices":[{"delta":{"content":"答案：B","reasoning_content":"思考过程"}}]}'
 
     assert OpenRouterVisionClient._extract_delta(data) == "答案：B"
+
+
+def test_extract_responses_api_ignores_reasoning_delta() -> None:
+    data = '{"type":"response.reasoning_text.delta","delta":"慢慢想"}'
+
+    assert OpenRouterVisionClient._extract_delta(data) == ""
 
 
 def test_extract_responses_api_text_delta() -> None:
@@ -95,6 +109,7 @@ def test_doubao_uses_ark_responses_api(monkeypatch) -> None:
     assert captured["url"] == "https://ark.cn-beijing.volces.com/api/v3/responses"
     assert captured["json"]["model"] == "doubao-seed-1-6-vision-250815"
     assert captured["json"]["stream"] is True
+    assert captured["json"]["thinking"] == {"type": "disabled"}
     content = captured["json"]["input"][0]["content"]
     assert content[0]["type"] == "input_image"
     assert str(content[0]["image_url"]).startswith("data:image/")
@@ -138,7 +153,53 @@ def test_doubao_turbo_uses_chat_completions(monkeypatch) -> None:
     assert captured["url"] == "https://ark.cn-beijing.volces.com/api/v3/chat/completions"
     assert captured["json"]["model"] == "doubao-seed-2-1-turbo-260628"
     assert captured["json"]["messages"][0]["content"][-1]["type"] == "text"
+    assert captured["json"]["thinking"] == {"type": "disabled"}
+    assert "不要输出思考过程" in captured["json"]["messages"][0]["content"][-1]["text"]
     assert "input" not in captured["json"]
+
+
+def test_doubao_mini_lite_and_pro_use_responses_api(monkeypatch) -> None:
+    captured: dict = {}
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def raise_for_status(self):
+            return None
+
+        def iter_lines(self, **kwargs):
+            yield b'data: {"type":"response.output_text.delta","delta":"ok"}'
+            yield b"data: [DONE]"
+
+    def fake_post(url, **kwargs):
+        captured["url"] = url
+        captured["json"] = kwargs["json"]
+        return Response()
+
+    monkeypatch.setattr("ai_screenshot_assistant.ai.client.requests.post", fake_post)
+    for model in (
+        "doubao-seed-2-0-mini-260428",
+        "doubao-seed-2-0-lite-260428",
+        "doubao-seed-2-1-pro-260915",
+    ):
+        captured.clear()
+        client = OpenRouterVisionClient(
+            ProviderConfig(
+                name="Doubao",
+                api_key="key",
+                base_url="https://ark.cn-beijing.volces.com/api/v3",
+                model=model,
+            )
+        )
+        assert list(client.analyze_image_stream(b"png")) == ["ok"]
+        assert captured["url"] == "https://ark.cn-beijing.volces.com/api/v3/responses"
+        assert captured["json"]["model"] == model
+        assert captured["json"]["thinking"] == {"type": "disabled"}
+        assert captured["json"]["input"][0]["content"][0]["type"] == "input_image"
 
 
 def test_parse_multi_question_text() -> None:
@@ -200,6 +261,7 @@ def test_openrouter_request_disables_reasoning_and_uses_low_latency_stream(monke
     assert captured["stream"] is True
     assert captured["json"]["stream"] is True
     assert captured["json"]["reasoning_effort"] == "none"
+    assert "不要输出思考过程" in captured["json"]["messages"][0]["content"][-1]["text"]
     assert captured["iter_lines_kwargs"] == {"chunk_size": 1, "decode_unicode": False}
 
 
@@ -237,6 +299,44 @@ def test_thinking_model_keeps_reasoning_enabled(monkeypatch) -> None:
     assert list(client.analyze_image_stream(b"png")) == ["A"]
     assert "reasoning_effort" not in captured["json"]
     assert captured["json"]["model"] == "qwen/qwen3-vl-235b-a22b-thinking"
+
+
+def test_openrouter_deepseek_flash_disables_reasoning(monkeypatch) -> None:
+    captured = {}
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def raise_for_status(self):
+            return None
+
+        def iter_lines(self, **kwargs):
+            yield b'data: {"choices":[{"delta":{"content":"B"}}]}'
+            yield b"data: [DONE]"
+
+    def fake_post(url, **kwargs):
+        captured["url"] = url
+        captured["json"] = kwargs["json"]
+        return Response()
+
+    monkeypatch.setattr("ai_screenshot_assistant.ai.client.requests.post", fake_post)
+    client = OpenRouterVisionClient(
+        ProviderConfig(
+            name="OpenRouter",
+            api_key="key",
+            base_url="https://openrouter.ai/api/v1",
+            model="deepseek/deepseek-v4.1-flash",
+        )
+    )
+
+    assert list(client.analyze_image_stream(b"png")) == ["B"]
+    assert captured["url"].endswith("/chat/completions")
+    assert captured["json"]["model"] == "deepseek/deepseek-v4.1-flash"
+    assert captured["json"]["reasoning_effort"] == "none"
 
 
 def test_large_images_are_resized_and_compressed_for_ai() -> None:

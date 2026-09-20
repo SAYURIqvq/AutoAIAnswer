@@ -45,6 +45,7 @@ from ai_screenshot_assistant.input.mouse_listener import MouseRoiListener
 from ai_screenshot_assistant.resources import app_icon_path
 from ai_screenshot_assistant.ui.streaming_overlay import StreamingOverlay
 from ai_screenshot_assistant.ui.native_capture import apply_window_capture_exclusion
+from ai_screenshot_assistant.utils.app_log import write_app_log
 from ai_screenshot_assistant.utils.qrcode_image import QR_DISPLAY_PX, pair_qr_png_bytes
 from ai_screenshot_assistant.websocket_client import DesktopWebSocketPublisher
 
@@ -126,14 +127,15 @@ class MainWindow(QMainWindow):
         self.provider_label = QLabel("当前模型：未配置")
         self.deepseek_key_input = QLineEdit(self.deepseek_key)
         self.deepseek_key_input.setEchoMode(QLineEdit.Normal)
-        self.deepseek_key_input.setPlaceholderText("可选，DeepSeek Flash 看图")
+        self.deepseek_key_input.setPlaceholderText("可选，官方 DeepSeek Flash")
         self.openrouter_key_input = QLineEdit(self.openrouter_key)
         self.openrouter_key_input.setEchoMode(QLineEdit.Normal)
-        self.openrouter_key_input.setPlaceholderText("可选，通义千问 VL")
+        self.openrouter_key_input.setPlaceholderText("可选，通义千问 VL / DeepSeek V4.1")
         self.doubao_key_input = QLineEdit(self.doubao_key)
         self.doubao_key_input.setEchoMode(QLineEdit.Normal)
         self.doubao_key_input.setPlaceholderText("可选，火山方舟 ARK_API_KEY")
         self.model_tier_combo = QComboBox()
+        self.model_tier_combo.setMinimumContentsLength(36)
         for route_id, vendor, model in route_options():
             self.model_tier_combo.addItem(f"{vendor} · {model}", route_id)
         index = self.model_tier_combo.findData(self.model_tier)
@@ -188,7 +190,7 @@ class MainWindow(QMainWindow):
         self.logs.setMinimumHeight(72)
         self.logs.setMaximumHeight(140)
         self.logs.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.logs.document().setMaximumBlockCount(80)
+        self.logs.document().setMaximumBlockCount(400)
         self.clear_chat_button = QPushButton("清空对话记录")
         self.clear_chat_button.clicked.connect(self._clear_conversation)
 
@@ -603,7 +605,7 @@ class MainWindow(QMainWindow):
                 continue
             image_data = raw_image.split(",", 1)[1] if "," in raw_image else raw_image
             try:
-                png_images.append(base64.b64decode(image_data, validate=True))
+                png_images.append(base64.b64decode(image_data))
             except Exception:
                 self._log("手机端提交的截图解码失败，已跳过")
         user_text = str(payload.get("text") or "").strip()
@@ -745,6 +747,11 @@ class MainWindow(QMainWindow):
 
     def _log(self, message: str) -> None:
         self.logs.append(message)
+        if message.startswith("Error:") or "失败" in message:
+            try:
+                write_app_log(message)
+            except Exception:
+                pass
 
     def _set_qr(self, url: str) -> None:
         pixmap = QPixmap()

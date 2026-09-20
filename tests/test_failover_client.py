@@ -1,7 +1,16 @@
 import requests
 
 from ai_screenshot_assistant.ai.client import FailoverVisionClient, ProviderConfig
-from ai_screenshot_assistant.ai.models import DOUBAO_VISION_MODEL, ROUTE_DOUBAO_SEED_VISION
+from ai_screenshot_assistant.ai.models import (
+    DOUBAO_MINI_MODEL,
+    DOUBAO_PRO_MODEL,
+    DOUBAO_VISION_MODEL,
+    OPENROUTER_DEEPSEEK_FLASH,
+    ROUTE_DOUBAO_MINI,
+    ROUTE_DOUBAO_PRO,
+    ROUTE_DOUBAO_SEED_VISION,
+    ROUTE_OPENROUTER_DEEPSEEK_FLASH,
+)
 
 
 class FakeClient:
@@ -112,6 +121,30 @@ def test_simple_tier_prefers_deepseek_flash_when_available() -> None:
     assert client.current_model_id() == "deepseek-flash"
 
 
+def test_openrouter_deepseek_flash_route_uses_openrouter() -> None:
+    client = FailoverVisionClient(
+        config("DeepSeek"),
+        config("OpenRouter"),
+        model_tier=ROUTE_OPENROUTER_DEEPSEEK_FLASH,
+    )
+
+    assert client.current_provider == "openrouter"
+    assert client.current_model_id() == OPENROUTER_DEEPSEEK_FLASH
+    assert client.openrouter.provider.model == OPENROUTER_DEEPSEEK_FLASH
+    assert client.deepseek.provider.model == "deepseek-flash"
+
+
+def test_official_deepseek_without_key_falls_back_to_openrouter_deepseek() -> None:
+    client = FailoverVisionClient(
+        config("DeepSeek", api_key=""),
+        config("OpenRouter"),
+        model_tier="simple",
+    )
+
+    assert client.current_provider == "openrouter"
+    assert client.current_model_id() == OPENROUTER_DEEPSEEK_FLASH
+
+
 def test_switching_tier_updates_provider_and_model() -> None:
     changes: list[str] = []
     client = FailoverVisionClient(config("DeepSeek"), config("OpenRouter"), changes.append, model_tier="simple")
@@ -135,6 +168,21 @@ def test_doubao_route_uses_ark_model() -> None:
     assert client.current_provider == "doubao"
     assert client.current_model_id() == DOUBAO_VISION_MODEL
     assert client.doubao.provider.model == DOUBAO_VISION_MODEL
+
+
+def test_switching_doubao_routes_updates_ark_model() -> None:
+    client = FailoverVisionClient(
+        config("DeepSeek"),
+        config("OpenRouter"),
+        model_tier=ROUTE_DOUBAO_MINI,
+        doubao=config("Doubao", model=DOUBAO_VISION_MODEL),
+    )
+
+    assert client.current_model_id() == DOUBAO_MINI_MODEL
+    client.apply_model_tier(ROUTE_DOUBAO_PRO)
+    assert client.current_provider == "doubao"
+    assert client.current_model_id() == DOUBAO_PRO_MODEL
+    assert client.doubao.provider.model == DOUBAO_PRO_MODEL
 
 
 def test_doubao_402_falls_back_to_openrouter() -> None:
