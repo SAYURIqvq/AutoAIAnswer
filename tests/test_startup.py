@@ -8,11 +8,12 @@ from main import _restore_hint
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_embedded_backend_keeps_preferred_port() -> None:
+def test_embedded_backend_keeps_preferred_port(monkeypatch) -> None:
+    monkeypatch.setattr("ai_screenshot_assistant.backend.embedded.get_lan_ip", lambda: "192.168.1.8")
     backend = EmbeddedBackend(8000)
     assert backend.port == 8000
     assert backend.local_url == "http://127.0.0.1:8000"
-    assert ":8000" in backend.url
+    assert backend.url == "http://192.168.1.8:8000"
 
 
 def test_main_uses_loopback_for_desktop_and_lan_for_qr() -> None:

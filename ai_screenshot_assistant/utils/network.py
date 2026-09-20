@@ -44,10 +44,14 @@ def _unique(addresses: list[str]) -> list[str]:
 
 
 def _hostname_ipv4() -> list[str]:
+    previous = socket.getdefaulttimeout()
+    socket.setdefaulttimeout(2)
     try:
         return list(socket.gethostbyname_ex(socket.gethostname())[2])
     except OSError:
         return []
+    finally:
+        socket.setdefaulttimeout(previous)
 
 
 def _route_ipv4() -> list[str]:
@@ -55,6 +59,7 @@ def _route_ipv4() -> list[str]:
     for probe in ("8.8.8.8", "1.1.1.1", "223.5.5.5"):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         try:
+            sock.settimeout(2)
             sock.connect((probe, 80))
             found.append(sock.getsockname()[0])
         except OSError:
@@ -89,7 +94,10 @@ def _os_ipv4() -> list[str]:
 
 
 def candidate_ipv4() -> list[str]:
-    return _unique([*_hostname_ipv4(), *_os_ipv4(), *_route_ipv4()])
+    found = _unique([*_hostname_ipv4(), *_route_ipv4()])
+    if any(_usable_private_ipv4(address) for address in found):
+        return found
+    return _unique([*found, *_os_ipv4()])
 
 
 def prefer_lan_ip(addresses: list[str]) -> str:
