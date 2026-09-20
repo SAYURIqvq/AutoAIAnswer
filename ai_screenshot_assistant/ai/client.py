@@ -148,6 +148,10 @@ class VisionClient:
     ) -> Iterator[str]:
         yield from self.analyze_images_stream([png_bytes], user_text=user_text, conversation=conversation)
 
+    def uses_responses_api(self) -> bool:
+        # Seed 1.6 Vision 官方示例走 /responses；Seed 2.1 Turbo 走 /chat/completions。
+        return "seed-1-6-vision" in self.provider.model.lower()
+
     def analyze_images_stream(
         self,
         png_images: list[bytes],
@@ -156,37 +160,27 @@ class VisionClient:
     ) -> Iterator[str]:
         if not self.provider.api_key:
             raise RuntimeError(f"{self.provider.name} API Key 不能为空")
-        content: list[dict[str, Any]] = [{"type": "text", "text": _build_user_prompt(user_text, conversation)}]
-        for png_bytes in png_images:
-            image_bytes, mime_type = prepare_image_for_ai(png_bytes)
-            image_b64 = base64.b64encode(image_bytes).decode("ascii")
-            content.append({"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{image_b64}"}})
-        payload = {
-            "model": self.provider.model,
-            "stream": True,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": content,
-                }
-            ],
-        }
-        if "openrouter.ai" in self.provider.base_url and "thinking" not in self.provider.model.lower():
-            payload["reasoning_effort"] = "none"
+        prompt = _build_user_prompt(user_text, conversation)
+        images: list[tuple[bytes, str]] = [prepare_image_for_ai(png_bytes) for png_bytes in png_images]
+        payload = self._request_payload(prompt, images)
         headers = {
             "Authorization": f"Bearer {self.provider.api_key}",
             "Content-Type": "application/json",
             "HTTP-Referer": "http://localhost",
             "X-Title": "AI Screenshot Assistant",
         }
+        path = "/responses" if self.uses_responses_api() else "/chat/completions"
         with requests.post(
-            f"{self.provider.base_url.rstrip('/')}/chat/completions",
+            f"{self.provider.base_url.rstrip('/')}{path}",
             headers=headers,
             json=payload,
             stream=True,
             timeout=self.provider.timeout_seconds,
         ) as response:
-            response.raise_for_status()
+            try:
+                response.raise_for_status()
+            except requests.HTTPError as exc:
+                raise self._friendly_http_error(exc) from exc
             for raw_line in response.iter_lines(chunk_size=1, decode_unicode=False):
                 if not raw_line:
                     continue
@@ -200,12 +194,79 @@ class VisionClient:
                 if delta:
                     yield delta
 
+    def _request_payload(self, prompt: str, images: list[tuple[bytes, str]]) -> dict[str, Any]:
+        if self.uses_responses_api():
+            content: list[dict[str, Any]] = []
+            for image_bytes, mime_type in images:
+                image_b64 = base64.b64encode(image_bytes).decode("ascii")
+                content.append(
+                    {
+                        "type": "input_image",
+                        "image_url": f"data:{mime_type};base64,{image_b64}",
+                    }
+                )
+            content.append({"type": "input_text", "text": prompt})
+            return {
+                "model": self.provider.model,
+                "stream": True,
+                "input": [{"role": "user", "content": content}],
+            }
+        content: list[dict[str, Any]] = []
+        for image_bytes, mime_type in images:
+            image_b64 = base64.b64encode(image_bytes).decode("ascii")
+            content.append({"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{image_b64}"}})
+        content.append({"type": "text", "text": prompt})
+        payload: dict[str, Any] = {
+            "model": self.provider.model,
+            "stream": True,
+            "messages": [{"role": "user", "content": content}],
+        }
+        if "openrouter.ai" in self.provider.base_url and "thinking" not in self.provider.model.lower():
+            payload["reasoning_effort"] = "none"
+        return payload
+
+    def _friendly_http_error(self, exc: requests.HTTPError) -> Exception:
+        response = exc.response
+        if response is None:
+            return exc
+        if response.status_code == 402:
+            return exc
+        detail = ""
+        try:
+            payload = response.json()
+            error = payload.get("error") if isinstance(payload, dict) else None
+            if isinstance(error, dict):
+                detail = str(error.get("code") or error.get("message") or "")
+        except ValueError:
+            detail = (response.text or "")[:180]
+        if response.status_code == 404 and (
+            self.uses_responses_api()
+            or "doubao" in self.provider.name.lower()
+            or "volces.com" in self.provider.base_url.lower()
+        ):
+            model = self.provider.model
+            return RuntimeError(
+                f"豆包模型未开通或无权调用（{model}）。"
+                "请到火山方舟开通该模型，或改用已开通的视觉模型后再试。"
+            )
+        if detail:
+            return RuntimeError(f"{self.provider.name} 调用失败：{detail}")
+        return exc
+
     @staticmethod
     def _extract_delta(data: str) -> str:
         try:
             parsed = json.loads(data)
         except json.JSONDecodeError:
             return ""
+        event_type = str(parsed.get("type") or "")
+        event_delta = parsed.get("delta")
+        if event_type in {
+            "response.output_text.delta",
+            "response.reasoning_summary_text.delta",
+            "response.reasoning_text.delta",
+        } and isinstance(event_delta, str):
+            return event_delta
         choices = parsed.get("choices") or []
         if not choices:
             return ""

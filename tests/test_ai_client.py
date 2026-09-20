@@ -53,6 +53,94 @@ def test_extract_stream_delta_prefers_content_over_reasoning() -> None:
     assert OpenRouterVisionClient._extract_delta(data) == "答案：B"
 
 
+def test_extract_responses_api_text_delta() -> None:
+    data = '{"type":"response.output_text.delta","delta":"看见了题目"}'
+
+    assert OpenRouterVisionClient._extract_delta(data) == "看见了题目"
+
+
+def test_doubao_uses_ark_responses_api(monkeypatch) -> None:
+    captured = {}
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def raise_for_status(self):
+            return None
+
+        def iter_lines(self, **kwargs):
+            yield b'data: {"type":"response.output_text.delta","delta":"cat"}'
+            yield b"data: [DONE]"
+
+    def fake_post(url, **kwargs):
+        captured["url"] = url
+        captured["json"] = kwargs["json"]
+        return Response()
+
+    monkeypatch.setattr("ai_screenshot_assistant.ai.client.requests.post", fake_post)
+    client = OpenRouterVisionClient(
+        ProviderConfig(
+            name="Doubao",
+            api_key="key",
+            base_url="https://ark.cn-beijing.volces.com/api/v3",
+            model="doubao-seed-1-6-vision-250815",
+        )
+    )
+
+    assert list(client.analyze_image_stream(b"png")) == ["cat"]
+    assert captured["url"] == "https://ark.cn-beijing.volces.com/api/v3/responses"
+    assert captured["json"]["model"] == "doubao-seed-1-6-vision-250815"
+    assert captured["json"]["stream"] is True
+    content = captured["json"]["input"][0]["content"]
+    assert content[0]["type"] == "input_image"
+    assert str(content[0]["image_url"]).startswith("data:image/")
+    assert content[-1]["type"] == "input_text"
+    assert "messages" not in captured["json"]
+
+
+def test_doubao_turbo_uses_chat_completions(monkeypatch) -> None:
+    captured = {}
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def raise_for_status(self):
+            return None
+
+        def iter_lines(self, **kwargs):
+            yield b'data: {"choices":[{"delta":{"content":"ok"}}]}'
+            yield b"data: [DONE]"
+
+    def fake_post(url, **kwargs):
+        captured["url"] = url
+        captured["json"] = kwargs["json"]
+        return Response()
+
+    monkeypatch.setattr("ai_screenshot_assistant.ai.client.requests.post", fake_post)
+    client = OpenRouterVisionClient(
+        ProviderConfig(
+            name="Doubao",
+            api_key="key",
+            base_url="https://ark.cn-beijing.volces.com/api/v3",
+            model="doubao-seed-2-1-turbo-260628",
+        )
+    )
+
+    assert list(client.analyze_image_stream(b"png")) == ["ok"]
+    assert captured["url"] == "https://ark.cn-beijing.volces.com/api/v3/chat/completions"
+    assert captured["json"]["model"] == "doubao-seed-2-1-turbo-260628"
+    assert captured["json"]["messages"][0]["content"][-1]["type"] == "text"
+    assert "input" not in captured["json"]
+
+
 def test_parse_multi_question_text() -> None:
     result = parse_ai_result(
         "【第1题】TCP 特点\n答案：B\n解析：面向连接\n\n【第2题】UDP 特点\n答案：A\n解析：无连接"

@@ -42,7 +42,7 @@ def test_mobile_page_exposes_explicit_model_routes_and_clear_chat() -> None:
 
     assert 'id="model-route"' in html
     assert "OpenRouter · qwen/qwen3-vl-235b-a22b-thinking" in html
-    assert "豆包 · doubao-seed-1-6-vision-250815" in html
+    assert "豆包 · doubao-seed-2-1-turbo-260628" in html
     assert "OpenRouter · qwen/qwen3-vl-32b-instruct" in html
     assert "OpenRouter · qwen/qwen3-vl-8b-instruct" in html
     assert "DeepSeek · deepseek-flash" in html

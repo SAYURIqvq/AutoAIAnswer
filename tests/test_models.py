@@ -26,6 +26,7 @@ def test_normalize_model_tier_accepts_chinese_labels() -> None:
     assert normalize_model_tier("openrouter-qwen-8b") == ROUTE_OPENROUTER_QWEN_8B
     assert normalize_model_tier("doubao") == ROUTE_DOUBAO_SEED_VISION
     assert normalize_model_tier("doubao-seed-1-6-vision") == ROUTE_DOUBAO_SEED_VISION
+    assert normalize_model_tier("doubao-seed-2-1-turbo") == ROUTE_DOUBAO_SEED_VISION
     assert normalize_model_tier("豆包") == ROUTE_DOUBAO_SEED_VISION
 
 

@@ -79,10 +79,12 @@
     doubao: "doubao-seed-vision",
     "豆包": "doubao-seed-vision",
     "doubao-seed-1-6-vision": "doubao-seed-vision",
-    "doubao-seed-1-6-vision-250815": "doubao-seed-vision"
+    "doubao-seed-1-6-vision-250815": "doubao-seed-vision",
+    "doubao-seed-2-1-turbo": "doubao-seed-vision",
+    "doubao-seed-2-1-turbo-260628": "doubao-seed-vision"
   };
   const knownRoutes = {
-    "doubao-seed-vision": "豆包 / doubao-seed-1-6-vision-250815",
+    "doubao-seed-vision": "豆包 / doubao-seed-2-1-turbo-260628",
     "openrouter-qwen-235b": "OpenRouter / qwen/qwen3-vl-235b-a22b-thinking",
     "openrouter-qwen-32b": "OpenRouter / qwen/qwen3-vl-32b-instruct",
     "openrouter-qwen-8b": "OpenRouter / qwen/qwen3-vl-8b-instruct",

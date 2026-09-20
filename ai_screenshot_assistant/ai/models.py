@@ -14,7 +14,7 @@ ROUTE_DEEPSEEK_FLASH = "deepseek-flash"
 DEFAULT_MODEL_TIER = ROUTE_OPENROUTER_QWEN_235B
 
 DEEPSEEK_VISION_MODEL = "deepseek-flash"
-DOUBAO_VISION_MODEL = "doubao-seed-1-6-vision-250815"
+DOUBAO_VISION_MODEL = "doubao-seed-2-1-turbo-260628"
 OPENROUTER_QWEN_235B = "qwen/qwen3-vl-235b-a22b-thinking"
 OPENROUTER_QWEN_32B = "qwen/qwen3-vl-32b-instruct"
 OPENROUTER_QWEN_8B = "qwen/qwen3-vl-8b-instruct"
@@ -78,6 +78,9 @@ ROUTE_ALIASES = {
     "doubao": ROUTE_DOUBAO_SEED_VISION,
     "豆包": ROUTE_DOUBAO_SEED_VISION,
     "doubao-seed-1-6-vision": ROUTE_DOUBAO_SEED_VISION,
+    "doubao-seed-1-6-vision-250815": ROUTE_DOUBAO_SEED_VISION,
+    "doubao-seed-2-1-turbo": ROUTE_DOUBAO_SEED_VISION,
+    "doubao-seed-2-1-turbo-260628": ROUTE_DOUBAO_SEED_VISION,
     DOUBAO_VISION_MODEL: ROUTE_DOUBAO_SEED_VISION,
     TIER_GOOD: ROUTE_OPENROUTER_QWEN_235B,
     "high": ROUTE_OPENROUTER_QWEN_235B,
