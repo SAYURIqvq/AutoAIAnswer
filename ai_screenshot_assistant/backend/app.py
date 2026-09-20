@@ -109,8 +109,8 @@ async def desktop_ws(websocket: WebSocket, session_id: str) -> None:
     if session is None:
         await websocket.close(code=4404)
         return
-    await websocket.accept()
     session.desktop = websocket
+    await websocket.accept()
     await _send_mobile(session, _system_event(session_id, "device.connected", {"device": "desktop"}))
     try:
         while True:
@@ -129,8 +129,8 @@ async def desktop_commands_ws(websocket: WebSocket, session_id: str) -> None:
     if session is None:
         await websocket.close(code=4404)
         return
-    await websocket.accept()
     session.desktop_commands = websocket
+    await websocket.accept()
     try:
         while True:
             await websocket.receive_text()
@@ -145,8 +145,8 @@ async def mobile_ws(websocket: WebSocket, session_id: str, last_event_id: int = 
     if session is None:
         await websocket.close(code=4404)
         return
-    await websocket.accept()
     session.mobile = websocket
+    await websocket.accept()
     for event in manager.since(session, last_event_id):
         await websocket.send_json(event)
     await websocket.send_json(_system_event(session_id, "device.connected", {"device": "mobile"}))

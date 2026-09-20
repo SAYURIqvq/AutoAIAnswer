@@ -1,12 +1,36 @@
+import asyncio
+
+import pytest
 from fastapi.testclient import TestClient
 
-from ai_screenshot_assistant.backend.app import app
+from ai_screenshot_assistant.backend.app import _handle_mobile_message, app
 from ai_screenshot_assistant.backend.session_manager import MAX_SESSION_EVENTS, MAX_STORED_TEXT_CHARS, SessionManager
 
 
-def test_create_session_and_mobile_page() -> None:
-    client = TestClient(app)
+class _Recorder:
+    def __init__(self) -> None:
+        self.messages: list[dict] = []
 
+    async def send_json(self, event: dict) -> None:
+        self.messages.append(event)
+
+
+@pytest.fixture
+def client():
+    with TestClient(app) as test_client:
+        yield test_client
+
+
+def _forward_mobile_command(client: TestClient, session: dict, message: str) -> dict:
+    session_id = session["session_id"]
+    with client.websocket_connect(f"/ws/desktop-commands/{session_id}") as desktop_commands:
+        with client.websocket_connect(f"/ws/mobile/{session_id}") as mobile:
+            mobile.receive_json()
+            mobile.send_text(message)
+            return desktop_commands.receive_json()
+
+
+def test_create_session_and_mobile_page(client: TestClient) -> None:
     response = client.post("/sessions")
     assert response.status_code == 200
     session = response.json()
@@ -16,8 +40,7 @@ def test_create_session_and_mobile_page() -> None:
     assert session["session_id"] in page.text
 
 
-def test_create_session_reuses_requested_pair_token() -> None:
-    client = TestClient(app)
+def test_create_session_reuses_requested_pair_token(client: TestClient) -> None:
     token = "stable_pair_token_1234567890"
 
     first = client.post("/sessions", json={"pair_token": token}).json()
@@ -29,17 +52,14 @@ def test_create_session_reuses_requested_pair_token() -> None:
     assert client.get(second["pair_url"]).status_code == 200
 
 
-def test_create_session_rejects_weak_requested_pair_token() -> None:
-    client = TestClient(app)
-
+def test_create_session_rejects_weak_requested_pair_token(client: TestClient) -> None:
     session = client.post("/sessions", json={"pair_token": "too-short"}).json()
 
     assert session["pair_token"] != "too-short"
     assert len(session["pair_token"]) >= 24
 
 
-def test_pair_page_waits_when_desktop_session_is_missing() -> None:
-    client = TestClient(app)
+def test_pair_page_waits_when_desktop_session_is_missing(client: TestClient) -> None:
     token = "waiting_pair_token_abcdef123456"
 
     waiting = client.get(f"/pair?t={token}")
@@ -58,8 +78,7 @@ def test_pair_page_waits_when_desktop_session_is_missing() -> None:
     assert created["session_id"] in client.get(f"/pair?t={token}").text
 
 
-def test_pair_cookie_reconnects_without_new_scan() -> None:
-    client = TestClient(app)
+def test_pair_cookie_reconnects_without_new_scan(client: TestClient) -> None:
     token = "cookie_pair_token_abcdef123456"
     client.post("/sessions", json={"pair_token": token})
     client.get(f"/pair?t={token}")
@@ -95,8 +114,7 @@ def test_connected_session_does_not_expire() -> None:
     assert session.expire_at > datetime.now(timezone.utc)
 
 
-def test_desktop_events_reach_mobile_websocket() -> None:
-    client = TestClient(app)
+def test_desktop_events_reach_mobile_websocket(client: TestClient) -> None:
     session = client.post("/sessions").json()
     session_id = session["session_id"]
 
@@ -120,33 +138,32 @@ def test_desktop_events_reach_mobile_websocket() -> None:
     assert received["event_id"] == 1
 
 
-def test_mobile_fullscreen_command_reaches_desktop_command_socket() -> None:
-    client = TestClient(app)
-    session = client.post("/sessions").json()
-    session_id = session["session_id"]
+def test_handle_mobile_message_forwards_when_desktop_commands_connected() -> None:
+    session = SessionManager().create_session()
+    recorder = _Recorder()
+    session.desktop_commands = recorder  # type: ignore[assignment]
 
-    with client.websocket_connect(f"/ws/desktop-commands/{session_id}") as desktop_commands:
-        with client.websocket_connect(f"/ws/mobile/{session_id}") as mobile:
-            mobile.receive_json()
-            mobile.send_text('{"type":"command.fullscreen"}')
-            command = desktop_commands.receive_json()
+    asyncio.run(_handle_mobile_message(session, '{"type":"command.fullscreen"}'))
+
+    assert recorder.messages[0]["type"] == "command.fullscreen"
+    assert recorder.messages[0]["payload"] == {"source": "mobile"}
+
+
+def test_mobile_fullscreen_command_reaches_desktop_command_socket(client: TestClient) -> None:
+    session = client.post("/sessions").json()
+    command = _forward_mobile_command(client, session, '{"type":"command.fullscreen"}')
 
     assert command["type"] == "command.fullscreen"
     assert command["payload"] == {"source": "mobile"}
 
 
-def test_mobile_fullscreen_command_forwards_question_payload() -> None:
-    client = TestClient(app)
+def test_mobile_fullscreen_command_forwards_question_payload(client: TestClient) -> None:
     session = client.post("/sessions").json()
-    session_id = session["session_id"]
-
-    with client.websocket_connect(f"/ws/desktop-commands/{session_id}") as desktop_commands:
-        with client.websocket_connect(f"/ws/mobile/{session_id}") as mobile:
-            mobile.receive_json()
-            mobile.send_text(
-                '{"type":"command.fullscreen","payload":{"text":"解释第 2 题","conversation":true}}'
-            )
-            command = desktop_commands.receive_json()
+    command = _forward_mobile_command(
+        client,
+        session,
+        '{"type":"command.fullscreen","payload":{"text":"解释第 2 题","conversation":true}}',
+    )
 
     assert command["type"] == "command.fullscreen"
     assert command["payload"] == {
@@ -156,18 +173,13 @@ def test_mobile_fullscreen_command_forwards_question_payload() -> None:
     }
 
 
-def test_mobile_fullscreen_command_forwards_chat_payload() -> None:
-    client = TestClient(app)
+def test_mobile_fullscreen_command_forwards_chat_payload(client: TestClient) -> None:
     session = client.post("/sessions").json()
-    session_id = session["session_id"]
-
-    with client.websocket_connect(f"/ws/desktop-commands/{session_id}") as desktop_commands:
-        with client.websocket_connect(f"/ws/mobile/{session_id}") as mobile:
-            mobile.receive_json()
-            mobile.send_text(
-                '{"type":"command.fullscreen","payload":{"text":"看一下这个空怎么填","conversation":true,"chat":true}}'
-            )
-            command = desktop_commands.receive_json()
+    command = _forward_mobile_command(
+        client,
+        session,
+        '{"type":"command.fullscreen","payload":{"text":"看一下这个空怎么填","conversation":true,"chat":true}}',
+    )
 
     assert command["type"] == "command.fullscreen"
     assert command["payload"] == {
@@ -178,18 +190,13 @@ def test_mobile_fullscreen_command_forwards_chat_payload() -> None:
     }
 
 
-def test_mobile_fullscreen_command_forwards_client_request_id() -> None:
-    client = TestClient(app)
+def test_mobile_fullscreen_command_forwards_client_request_id(client: TestClient) -> None:
     session = client.post("/sessions").json()
-    session_id = session["session_id"]
-
-    with client.websocket_connect(f"/ws/desktop-commands/{session_id}") as desktop_commands:
-        with client.websocket_connect(f"/ws/mobile/{session_id}") as mobile:
-            mobile.receive_json()
-            mobile.send_text(
-                '{"type":"command.fullscreen","payload":{"client_request_id":"fullscreen-123"}}'
-            )
-            command = desktop_commands.receive_json()
+    command = _forward_mobile_command(
+        client,
+        session,
+        '{"type":"command.fullscreen","payload":{"client_request_id":"fullscreen-123"}}',
+    )
 
     assert command["type"] == "command.fullscreen"
     assert command["payload"] == {
@@ -198,23 +205,15 @@ def test_mobile_fullscreen_command_forwards_client_request_id() -> None:
     }
 
 
-def test_mobile_capture_fullscreen_command_reaches_desktop_command_socket() -> None:
-    client = TestClient(app)
+def test_mobile_capture_fullscreen_command_reaches_desktop_command_socket(client: TestClient) -> None:
     session = client.post("/sessions").json()
-    session_id = session["session_id"]
-
-    with client.websocket_connect(f"/ws/desktop-commands/{session_id}") as desktop_commands:
-        with client.websocket_connect(f"/ws/mobile/{session_id}") as mobile:
-            mobile.receive_json()
-            mobile.send_text('{"type":"command.capture_fullscreen"}')
-            command = desktop_commands.receive_json()
+    command = _forward_mobile_command(client, session, '{"type":"command.capture_fullscreen"}')
 
     assert command["type"] == "command.capture_fullscreen"
     assert command["payload"] == {"source": "mobile"}
 
 
-def test_mobile_command_without_desktop_reports_error() -> None:
-    client = TestClient(app)
+def test_mobile_command_without_desktop_reports_error(client: TestClient) -> None:
     session = client.post("/sessions").json()
     session_id = session["session_id"]
 
@@ -230,8 +229,7 @@ def test_mobile_command_without_desktop_reports_error() -> None:
     assert "命令通道" in event["payload"]["message"]
 
 
-def test_session_lookup_reports_desktop_ready_flag() -> None:
-    client = TestClient(app)
+def test_session_lookup_reports_desktop_ready_flag(client: TestClient) -> None:
     token = "desktop_ready_token_abcdef123456"
     created = client.post("/sessions", json={"pair_token": token}).json()
     lookup = client.get(f"/session?t={token}").json()
@@ -240,19 +238,17 @@ def test_session_lookup_reports_desktop_ready_flag() -> None:
     assert lookup["session_id"] == created["session_id"]
     assert lookup["desktop_ready"] is False
 
+    with client.websocket_connect(f"/ws/desktop-commands/{created['session_id']}"):
+        assert client.get(f"/session?t={token}").json()["desktop_ready"] is True
 
-def test_mobile_submit_screenshots_forwards_images_without_text() -> None:
-    client = TestClient(app)
+
+def test_mobile_submit_screenshots_forwards_images_without_text(client: TestClient) -> None:
     session = client.post("/sessions").json()
-    session_id = session["session_id"]
-
-    with client.websocket_connect(f"/ws/desktop-commands/{session_id}") as desktop_commands:
-        with client.websocket_connect(f"/ws/mobile/{session_id}") as mobile:
-            mobile.receive_json()
-            mobile.send_text(
-                '{"type":"command.submit_screenshots","payload":{"images":["img1","img2"],"conversation":true,"chat":true}}'
-            )
-            command = desktop_commands.receive_json()
+    command = _forward_mobile_command(
+        client,
+        session,
+        '{"type":"command.submit_screenshots","payload":{"images":["img1","img2"],"conversation":true,"chat":true}}',
+    )
 
     assert command["type"] == "command.submit_screenshots"
     assert command["payload"] == {
@@ -263,18 +259,13 @@ def test_mobile_submit_screenshots_forwards_images_without_text() -> None:
     }
 
 
-def test_mobile_submit_screenshots_forwards_client_request_id() -> None:
-    client = TestClient(app)
+def test_mobile_submit_screenshots_forwards_client_request_id(client: TestClient) -> None:
     session = client.post("/sessions").json()
-    session_id = session["session_id"]
-
-    with client.websocket_connect(f"/ws/desktop-commands/{session_id}") as desktop_commands:
-        with client.websocket_connect(f"/ws/mobile/{session_id}") as mobile:
-            mobile.receive_json()
-            mobile.send_text(
-                '{"type":"command.submit_screenshots","payload":{"text":"继续","client_request_id":"chat-456"}}'
-            )
-            command = desktop_commands.receive_json()
+    command = _forward_mobile_command(
+        client,
+        session,
+        '{"type":"command.submit_screenshots","payload":{"text":"继续","client_request_id":"chat-456"}}',
+    )
 
     assert command["type"] == "command.submit_screenshots"
     assert command["payload"] == {
@@ -332,31 +323,21 @@ def test_clear_events_releases_session_history() -> None:
     assert session.next_event_id == 2
 
 
-def test_mobile_clear_conversation_command_reaches_desktop() -> None:
-    client = TestClient(app)
+def test_mobile_clear_conversation_command_reaches_desktop(client: TestClient) -> None:
     session = client.post("/sessions").json()
-    session_id = session["session_id"]
-
-    with client.websocket_connect(f"/ws/desktop-commands/{session_id}") as desktop_commands:
-        with client.websocket_connect(f"/ws/mobile/{session_id}") as mobile:
-            mobile.receive_json()
-            mobile.send_text('{"type":"command.clear_conversation"}')
-            command = desktop_commands.receive_json()
+    command = _forward_mobile_command(client, session, '{"type":"command.clear_conversation"}')
 
     assert command["type"] == "command.clear_conversation"
     assert command["payload"] == {"source": "mobile"}
 
 
-def test_mobile_set_model_tier_command_forwards_tier() -> None:
-    client = TestClient(app)
+def test_mobile_set_model_tier_command_forwards_tier(client: TestClient) -> None:
     session = client.post("/sessions").json()
-    session_id = session["session_id"]
-
-    with client.websocket_connect(f"/ws/desktop-commands/{session_id}") as desktop_commands:
-        with client.websocket_connect(f"/ws/mobile/{session_id}") as mobile:
-            mobile.receive_json()
-            mobile.send_text('{"type":"command.set_model_tier","payload":{"tier":"openrouter-qwen-32b","route":"openrouter-qwen-32b"}}')
-            command = desktop_commands.receive_json()
+    command = _forward_mobile_command(
+        client,
+        session,
+        '{"type":"command.set_model_tier","payload":{"tier":"openrouter-qwen-32b","route":"openrouter-qwen-32b"}}',
+    )
 
     assert command["type"] == "command.set_model_tier"
     assert command["payload"]["source"] == "mobile"
