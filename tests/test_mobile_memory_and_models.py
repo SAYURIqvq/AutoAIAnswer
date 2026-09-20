@@ -62,7 +62,19 @@ def test_mobile_page_exposes_explicit_model_routes_and_clear_chat() -> None:
     assert "command.set_model_tier" in js
     assert "sendModelTier(currentTier)" not in js
     assert "分析失败：" in js
-    assert "chat: true, conversation: true" in js
+    fullscreen_chunk = js.split("fullscreenButton.addEventListener", 1)[1].split("chatCaptureButton.addEventListener", 1)[0]
+    assert "command.fullscreen" in fullscreen_chunk
+    assert "client_request_id: activeDirectRequestId" in fullscreen_chunk
+    assert "chat: true" not in fullscreen_chunk
+    assert "conversation: true" not in fullscreen_chunk
+    assert "请根据当前屏幕作答" not in fullscreen_chunk
+    assert "activeChatRequestId = requestId" not in fullscreen_chunk
+    fail_chunk = js.split("function failAssistantMessage", 1)[1].split("function isOutdatedAnswerEvent", 1)[0]
+    assert "if (!activeChatRequestId)" in fail_chunk
+    assert "nextRequestId(\"chat\")" not in fail_chunk
+    assert "function isChatAnswer" in js
+    assert "聊天请求分析中" not in js
+    assert 'startsWith("chat-")' in js
     assert "normalizeRoute" in js
     assert "saveImagesToAlbum" in js
     assert "selectedAlbumItems" in js
@@ -93,6 +105,8 @@ def test_mobile_send_removes_chat_attachments_from_preview() -> None:
     js = (STATIC / "app.js").read_text(encoding="utf-8")
     ask_chunk = js.split("askButton.addEventListener", 1)[1]
 
+    assert "conversation: true" in ask_chunk
+    assert "chat: true" in ask_chunk
     assert "removeSentChatScreenshots(chatImages)" in ask_chunk
     assert "item.forChat = false" not in ask_chunk
     assert 'questionInput.value = ""' in ask_chunk

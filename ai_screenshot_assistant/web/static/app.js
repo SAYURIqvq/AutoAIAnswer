@@ -581,14 +581,23 @@
   }
 
   function failAssistantMessage(message) {
+    if (!activeChatRequestId) {
+      return;
+    }
     if (!activeAssistantBubble) {
-      startAssistantMessage(activeChatRequestId || nextRequestId("chat"));
+      startAssistantMessage(activeChatRequestId);
     }
     renderFormattedText(activeAssistantBubble, `错误：${message || "模型调用失败"}`);
     activeChatRequestId = null;
     activeAssistantBubble = null;
     activeAssistantText = "";
     chatList.scrollTop = chatList.scrollHeight;
+  }
+
+  function isChatAnswer(event) {
+    const requestId = String(event.request_id || "");
+    const payload = event.payload || {};
+    return Boolean(payload.chat) || requestId.startsWith("chat-");
   }
 
   function isOutdatedAnswerEvent(event) {
@@ -610,31 +619,34 @@
       if (isOutdatedAnswerEvent(event)) {
         return;
       }
-      buffer = "";
       setSelectionStatus("analyzing", "AI 正在分析，请稍候");
-      if (payload.chat) {
+      if (isChatAnswer(event)) {
         startAssistantMessage(event.request_id);
-        setOutput("聊天请求分析中…");
-      } else {
-        setOutput("分析中…");
+        return;
       }
+      buffer = "";
+      setOutput("分析中…");
     } else if (event.type === "answer.delta") {
       if (isOutdatedAnswerEvent(event)) {
         return;
       }
-      buffer += payload.delta || "";
-      if (!appendAssistantDelta(event.request_id, payload.delta || "")) {
-        setOutput(buffer || "分析中…");
+      if (appendAssistantDelta(event.request_id, payload.delta || "")) {
+        return;
       }
+      buffer += payload.delta || "";
+      setOutput(buffer || "分析中…");
     } else if (event.type === "answer.completed") {
       if (isOutdatedAnswerEvent(event)) {
         return;
       }
       const result = payload.result || {};
-      buffer = result.text || buffer || "分析完成";
-      if (!completeAssistantMessage(event.request_id, buffer)) {
-        setOutput(buffer);
+      const text = result.text || buffer || "分析完成";
+      if (completeAssistantMessage(event.request_id, text)) {
+        setSelectionStatus("completed", "答案已生成，可以继续框选或全屏截题");
+        return;
       }
+      buffer = text;
+      setOutput(buffer);
       if (event.request_id === activeDirectRequestId) {
         activeDirectRequestId = null;
       }
@@ -656,12 +668,15 @@
       if (isOutdatedAnswerEvent(event)) {
         return;
       }
-      buffer = "";
       const errorText = payload.message || "模型调用失败";
-      failAssistantMessage(errorText);
-      setOutput(`错误：${errorText}`);
-      if (event.request_id === activeDirectRequestId) {
-        activeDirectRequestId = null;
+      if (isChatAnswer(event)) {
+        failAssistantMessage(errorText);
+      } else {
+        buffer = "";
+        setOutput(`错误：${errorText}`);
+        if (event.request_id === activeDirectRequestId) {
+          activeDirectRequestId = null;
+        }
       }
       setSelectionStatus("error", `分析失败：${errorText}`);
     } else if (event.type === "conversation.cleared") {
@@ -761,19 +776,14 @@
     if (!socket || socket.readyState !== WebSocket.OPEN) {
       return;
     }
-    const requestId = nextRequestId("fullscreen");
-    activeDirectRequestId = requestId;
-    activeChatRequestId = requestId;
-    activeAssistantBubble = null;
-    activeAssistantText = "";
+    activeDirectRequestId = nextRequestId("fullscreen");
     buffer = "";
-    appendMessage("user", "请根据当前屏幕作答", 1);
     setOutput("分析中…");
     fullscreenButton.disabled = true;
     setSelectionStatus("capturing", "已请求电脑截取全屏");
     socket.send(JSON.stringify({
       type: "command.fullscreen",
-      payload: { client_request_id: requestId, chat: true, conversation: true }
+      payload: { client_request_id: activeDirectRequestId }
     }));
     setTimeout(function () {
       if (socket && socket.readyState === WebSocket.OPEN) {
