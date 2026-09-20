@@ -11,5 +11,6 @@ python-dotenv
 pyinstaller
 pytest
 pytest-asyncio
+pytest-timeout
 httpx
 qrcode[pil]

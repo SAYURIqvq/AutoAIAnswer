@@ -1,3 +1,4 @@
+import os
 import sys
 
 import pytest
@@ -18,6 +19,7 @@ def test_exclude_flag_value() -> None:
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="requires a real Windows HWND")
+@pytest.mark.skipif(os.getenv("GITHUB_ACTIONS") == "true", reason="GitHub-hosted Windows has no interactive desktop")
 def test_native_console_exclusion_accepts_qt_window(qapp) -> None:
     window = QMainWindow()
     window.show()
