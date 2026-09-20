@@ -420,8 +420,6 @@
     activeChatRequestId = null;
     activeAssistantBubble = null;
     activeAssistantText = "";
-    activeDirectRequestId = null;
-    buffer = "";
     albumItems = [];
     hideAlbumLongPressSheet();
     renderPreviewList();
@@ -430,7 +428,6 @@
     empty.className = "empty-chat";
     empty.textContent = "可以只截图不输入文字；多张截图会和可选文字一起发送给 AI。";
     chatList.appendChild(empty);
-    setOutput("等待电脑端发送题目…");
     updateAskButton();
   }
 
@@ -652,17 +649,12 @@
       }
       setSelectionStatus("completed", "答案已生成，可以继续框选或全屏截题");
     } else if (event.type === "screenshot.captured") {
-      if (payload.image) {
-        const forChat = payload.add_to_buffer !== false;
-        addAlbumItem(payload.image, payload.size || 0, forChat);
+      if (payload.image && payload.add_to_buffer === true) {
+        addAlbumItem(payload.image, payload.size || 0, true);
         renderPreviewList();
         updateAskButton();
         const selected = selectedAlbumItems().length;
-        if (forChat) {
-          setSelectionStatus("completed", `已添加截图，已选 ${selected} 张，可勾选后保存到相册或发送`);
-        } else {
-          setSelectionStatus("completed", `截图已到达手机，已选 ${selected} 张，可勾选后保存到相册`);
-        }
+        setSelectionStatus("completed", `已添加截图，已选 ${selected} 张，可勾选后保存到相册或发送`);
       }
     } else if (event.type === "answer.error") {
       if (isOutdatedAnswerEvent(event)) {

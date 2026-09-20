@@ -104,7 +104,6 @@ def test_workflow_streams_and_completes() -> None:
     workflow.process_roi(Roi(left=1, top=2, width=30, height=40))
 
     assert [event["type"] for event in publisher.events] == [
-        "screenshot.captured",
         "selection.status",
         "answer.started",
         "answer.delta",
@@ -113,8 +112,7 @@ def test_workflow_streams_and_completes() -> None:
         "answer.completed",
         "selection.status",
     ]
-    assert publisher.events[0]["payload"]["save_to_album"] is True
-    assert publisher.events[0]["payload"]["add_to_buffer"] is False
+    assert "screenshot.captured" not in [event["type"] for event in publisher.events]
     assert result_holder["answer"] == "B"
     assert result_holder["reason"] == "TCP reliable"
     assert stream_states == [
@@ -165,8 +163,7 @@ def test_workflow_fullscreen_streams_and_completes() -> None:
     assert result_holder["answer"] == "B"
     screenshot_events = [event for event in publisher.events if event["type"] == "screenshot.captured"]
     started = next(event for event in publisher.events if event["type"] == "answer.started")
-    assert screenshot_events[0]["payload"]["save_to_album"] is True
-    assert screenshot_events[0]["payload"]["add_to_buffer"] is False
+    assert screenshot_events == []
     assert started["payload"] == {"mode": "fullscreen"}
 
 

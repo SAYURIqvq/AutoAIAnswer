@@ -215,6 +215,8 @@ class AssistantWorkflow:
         *,
         add_to_buffer: bool,
     ) -> None:
+        if not add_to_buffer:
+            return
         image_bytes, mime_type = prepare_image_for_album(png)
         image_b64 = base64.b64encode(image_bytes).decode("ascii")
         self._publish(
@@ -224,7 +226,7 @@ class AssistantWorkflow:
                 "image": f"data:{mime_type};base64,{image_b64}",
                 "size": len(image_bytes),
                 "original_size": len(png),
-                "add_to_buffer": add_to_buffer,
+                "add_to_buffer": True,
                 "save_to_album": True,
             },
         )

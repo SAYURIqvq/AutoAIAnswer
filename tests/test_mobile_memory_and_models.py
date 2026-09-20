@@ -82,6 +82,17 @@ def test_mobile_page_exposes_explicit_model_routes_and_clear_chat() -> None:
     assert "存储图像" in js
     assert "isAppleMobile" in js
     assert "downloadBlob" not in js
+    captured_chunk = js.split('event.type === "screenshot.captured"', 1)[1].split('event.type === "answer.error"', 1)[0]
+    assert "payload.add_to_buffer === true" in captured_chunk
+    assert "addAlbumItem(payload.image, payload.size || 0, true)" in captured_chunk
+    assert "addAlbumItem(payload.image, payload.size || 0, forChat)" not in captured_chunk
+    assert "截图已到达手机" not in js
+    reset_chunk = js.split("function resetChatUi", 1)[1].split("function setActiveTier", 1)[0]
+    assert "setOutput(" not in reset_chunk
+    assert "activeDirectRequestId = null" not in reset_chunk
+    assert "const maxChatMessages = 40" in js
+    assert "const maxAlbumItems = 12" in js
+    assert "const maxRenderChars = 40000" in js
     assert "add_to_buffer" in js
     assert "conversation.cleared" in js
     assert "model.changed" in js
