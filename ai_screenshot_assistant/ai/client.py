@@ -226,7 +226,8 @@ def _build_user_prompt(user_text: str | None, conversation: list[dict[str, str]]
         parts.append(
             "手机端用户补充/追问：\n"
             + cleaned_text
-            + "\n\n请优先回答这条补充/追问；如果是选择题，仍先输出选项再给极简解析。"
+            + "\n\n请优先回答这条补充/追问。第一行仍必须是最终答案："
+            "选择题有字母就写选哪项，没有字母就直接写正确选项原文，然后再给极简解析。"
         )
     return "\n\n".join(parts)
 

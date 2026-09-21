@@ -474,34 +474,56 @@ def test_set_model_tier_publishes_choice() -> None:
     assert "OpenRouter" in publisher.events[-1]["payload"]["display_name"]
 
 
-def test_overlapping_analysis_is_rejected() -> None:
+def test_overlapping_analysis_replaces_previous_output() -> None:
     import threading
 
-    started = threading.Event()
-    proceed = threading.Event()
+    first_started = threading.Event()
+    proceed_first = threading.Event()
 
-    class SlowAI:
+    class SlowThenFastAI:
+        def __init__(self) -> None:
+            self.calls = 0
+            self.lock = threading.Lock()
+
         def analyze_images_stream(self, png_images, user_text=None, conversation=None):
-            started.set()
-            proceed.wait(timeout=2)
-            yield "答案：A"
+            with self.lock:
+                self.calls += 1
+                call = self.calls
+            if call == 1:
+                first_started.set()
+                proceed_first.wait(timeout=2)
+                yield "答案：旧题"
+            else:
+                yield "答案：新题"
+                yield "\n解析：最新截图"
 
+    overlay: list[str] = []
     publisher = FakePublisher()
     workflow = AssistantWorkflow(
         session_id="s1",
         capture=FakeCapture(),
-        ai_client=SlowAI(),
+        ai_client=SlowThenFastAI(),
         publisher=publisher,
         app_settings=replace(settings, save_debug_image=False),
     )
+    workflow.on_stream_started = lambda: overlay.append("start")
+    workflow.on_stream_delta = overlay.append
+    workflow.on_stream_completed = overlay.append
+    workflow.on_stream_error = lambda message: overlay.append(f"error:{message}")
 
     worker = threading.Thread(target=workflow.process_mobile_images, args=([b"one"],), daemon=True)
     worker.start()
-    assert started.wait(1)
+    assert first_started.wait(1)
     workflow.process_mobile_images([b"two"])
-    proceed.set()
+    proceed_first.set()
     worker.join(timeout=2)
 
     errors = [event for event in publisher.events if event["type"] == "answer.error"]
-    assert any("上一题仍在分析" in event["payload"]["message"] for event in errors)
+    completed = [event for event in publisher.events if event["type"] == "answer.completed"]
+    assert not any("上一题仍在分析" in event["payload"]["message"] for event in errors)
+    assert completed
+    assert completed[-1]["payload"]["result"]["text"].startswith("答案：新题")
+    assert "答案：旧题" not in "".join(overlay)
+    assert overlay[-1].startswith("答案：新题")
+    assert not any(item.startswith("error:") for item in overlay)
 

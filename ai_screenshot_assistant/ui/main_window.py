@@ -425,6 +425,10 @@ class MainWindow(QMainWindow):
         self.app_settings.setValue("overlay/font_px", max(8, min(22, size)))
         self.overlay.set_font_px(size)
 
+    def _on_capture_finished(self) -> None:
+        if self.mouse_listener is not None:
+            self.mouse_listener.set_enabled(True)
+
     def _on_stream_started(self) -> None:
         # Overlay visibility is owned only by 「显示桌面流式悬浮答案」.
         # Streaming must not show/raise it, or the main console comes forward too.
@@ -479,6 +483,7 @@ class MainWindow(QMainWindow):
         self.workflow.on_stream_delta = self.signals.stream_delta.emit
         self.workflow.on_stream_completed = self.signals.stream_completed.emit
         self.workflow.on_stream_error = self.signals.stream_error.emit
+        self.workflow.on_capture_finished = self._on_capture_finished
         self._refresh_provider_label(ai_client.current_provider)
         self._publish_model_changed()
         if ai_client.current_provider == "none":
@@ -627,11 +632,11 @@ class MainWindow(QMainWindow):
             return (
                 "手势：左键长按 2 秒框选起点，再左键单击终点；"
                 "右键或 Control+左键长按 2 秒截取当前屏幕。也可用「截取当前屏幕」按钮。"
-                "一图多题会按题号对应作答；生成期间暂停监听"
+                "一图多题会按题号对应作答；截图完成后可立即再按，新一次会覆盖上一题"
             )
         return (
             "手势：左键长按 2 秒框选起点，再左键单击终点；"
-            "右键长按 2 秒截取当前屏幕全屏。一图多题会按题号对应作答；生成期间暂停监听"
+            "右键长按 2 秒截取当前屏幕全屏。一图多题会按题号对应作答；截图完成后可立即再按，新一次会覆盖上一题"
         )
 
     def _maybe_prompt_macos_permissions(self) -> None:

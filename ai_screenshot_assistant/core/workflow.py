@@ -69,8 +69,10 @@ class AssistantWorkflow:
         self.on_stream_delta = lambda delta: None
         self.on_stream_completed = lambda text: None
         self.on_stream_error = lambda message: None
+        self.on_capture_finished = lambda: None
         self.mobile_conversation: list[dict[str, str]] = []
-        self._analyze_lock = threading.Lock()
+        self._generation_lock = threading.Lock()
+        self._generation = 0
 
     def start_capture(self) -> None:
         self.roi.start()
@@ -104,6 +106,7 @@ class AssistantWorkflow:
         try:
             png = self.capture.capture_png(roi, debug_path=self._debug_path())
             self._publish_captured_screenshot(png, request_id, add_to_buffer=False)
+            self.on_capture_finished()
             self._analyze_png(png, request_id, started_at, {"roi": roi.to_mss_monitor()})
         except Exception as exc:
             self._fail(str(exc), request_id=request_id)
@@ -132,6 +135,7 @@ class AssistantWorkflow:
         try:
             png = self.capture.capture_fullscreen_png(x, y, debug_path=self._debug_path())
             self._publish_captured_screenshot(png, request_id, add_to_buffer=False)
+            self.on_capture_finished()
             self._analyze_png(
                 png,
                 request_id,
@@ -148,6 +152,7 @@ class AssistantWorkflow:
         try:
             png = self.capture.capture_fullscreen_png(x, y, debug_path=self._debug_path())
             self._publish_captured_screenshot(png, request_id, add_to_buffer=True)
+            self.on_capture_finished()
             self._publish_selection_status("completed", "截图已添加到手机端，可保存到相册或发送给 AI")
         except Exception as exc:
             self._fail(str(exc), request_id=request_id)
@@ -255,12 +260,12 @@ class AssistantWorkflow:
         user_text: str | None = None,
         use_conversation: bool = False,
     ) -> None:
-        if not self._analyze_lock.acquire(blocking=False):
-            self._fail("上一题仍在分析，请稍后再试", request_id=request_id)
-            return
+        self.on_capture_finished()
+        generation = self._begin_analysis()
         try:
+            if not self._run_if_active(generation, self.on_stream_started):
+                return
             self._publish_selection_status("analyzing", "截图成功，AI 正在分析全部题目")
-            self.on_stream_started()
             self._publish("answer.started", request_id, started_payload)
             chunks: list[str] = []
             conversation = cap_conversation_memory(self.mobile_conversation) if use_conversation else None
@@ -271,11 +276,16 @@ class AssistantWorkflow:
             else:
                 raise RuntimeError("当前 AI 客户端不支持无图追问")
             for delta in stream:
+                if not self._is_active(generation):
+                    return
                 chunks.append(delta)
-                self.on_stream_delta(delta)
                 self._publish("answer.delta", request_id, {"delta": delta})
+                if not self._run_if_active(generation, lambda current=delta: self.on_stream_delta(current)):
+                    return
+            if not self._is_active(generation):
+                return
             text = format_ai_output("".join(chunks))
-            if use_conversation:
+            if use_conversation and self._is_active(generation):
                 self._remember_mobile_turn(
                     user_text.strip() if user_text and user_text.strip() else f"用户发送了 {len(png_images)} 张截图",
                     text,
@@ -290,14 +300,35 @@ class AssistantWorkflow:
                     "latency_seconds": round(time.perf_counter() - started_at, 3),
                 }
             }
+            if not self._is_active(generation):
+                return
             self._publish("answer.completed", request_id, payload)
-            self.on_stream_completed(text)
-            self.on_result(payload["result"])
+            if not self._run_if_active(generation, lambda: self._apply_local_result(text, payload["result"])):
+                return
             self._publish_selection_status("completed", "答案已生成，可以继续框选或全屏截题")
         except Exception as exc:
-            self._fail(str(exc), request_id=request_id)
-        finally:
-            self._analyze_lock.release()
+            if self._is_active(generation):
+                self._fail(str(exc), request_id=request_id)
+
+    def _begin_analysis(self) -> int:
+        with self._generation_lock:
+            self._generation += 1
+            return self._generation
+
+    def _is_active(self, generation: int) -> bool:
+        with self._generation_lock:
+            return generation == self._generation
+
+    def _run_if_active(self, generation: int, callback) -> bool:
+        with self._generation_lock:
+            if generation != self._generation:
+                return False
+            callback()
+            return True
+
+    def _apply_local_result(self, text: str, result: dict[str, Any]) -> None:
+        self.on_stream_completed(text)
+        self.on_result(result)
 
     def _remember_mobile_turn(self, user_text: str, assistant_text: str) -> None:
         self.mobile_conversation.extend(
