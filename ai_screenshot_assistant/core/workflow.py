@@ -2,13 +2,19 @@ from __future__ import annotations
 
 import base64
 import gc
+import inspect
 import threading
 import time
 from pathlib import Path
 from typing import Any, Protocol
 from uuid import uuid4
 
-from ai_screenshot_assistant.ai.client import parse_ai_result, prepare_image_for_album
+from ai_screenshot_assistant.ai.client import (
+    AnalysisCancelled,
+    CancellationToken,
+    parse_ai_result,
+    prepare_image_for_album,
+)
 from ai_screenshot_assistant.ai.formatting import format_ai_output
 from ai_screenshot_assistant.config import Settings, settings
 from ai_screenshot_assistant.core.conversation import cap_conversation_memory
@@ -73,6 +79,7 @@ class AssistantWorkflow:
         self.mobile_conversation: list[dict[str, str]] = []
         self._generation_lock = threading.Lock()
         self._generation = 0
+        self._active_cancel_token: CancellationToken | None = None
 
     def start_capture(self) -> None:
         self.roi.start()
@@ -101,15 +108,25 @@ class AssistantWorkflow:
         self.roi.reset()
 
     def process_roi(self, roi: Roi) -> None:
+        generation, cancel_token = self._begin_analysis()
         request_id = uuid4().hex
         started_at = time.perf_counter()
         try:
             png = self.capture.capture_png(roi, debug_path=self._debug_path())
+            if not self._is_active(generation):
+                return
             self._publish_captured_screenshot(png, request_id, add_to_buffer=False)
             self.on_capture_finished()
-            self._analyze_png(png, request_id, started_at, {"roi": roi.to_mss_monitor()})
+            self._analyze_png(
+                png,
+                request_id,
+                started_at,
+                {"roi": roi.to_mss_monitor()},
+                analysis=(generation, cancel_token),
+            )
         except Exception as exc:
-            self._fail(str(exc), request_id=request_id)
+            if self._is_active(generation):
+                self._fail(str(exc), request_id=request_id)
 
     def process_fullscreen(
         self,
@@ -120,6 +137,7 @@ class AssistantWorkflow:
         is_chat: bool = False,
         request_id: str | None = None,
     ) -> None:
+        generation, cancel_token = self._begin_analysis()
         self.roi.reset()
         self.on_status("Fullscreen captured; analyzing...")
         self._publish_selection_status("capturing", "已截取当前屏幕全屏，正在发送给 AI")
@@ -134,6 +152,8 @@ class AssistantWorkflow:
             started_payload["chat"] = True
         try:
             png = self.capture.capture_fullscreen_png(x, y, debug_path=self._debug_path())
+            if not self._is_active(generation):
+                return
             self._publish_captured_screenshot(png, request_id, add_to_buffer=False)
             self.on_capture_finished()
             self._analyze_png(
@@ -143,9 +163,11 @@ class AssistantWorkflow:
                 started_payload,
                 user_text=user_text,
                 use_conversation=use_conversation,
+                analysis=(generation, cancel_token),
             )
         except Exception as exc:
-            self._fail(str(exc), request_id=request_id)
+            if self._is_active(generation):
+                self._fail(str(exc), request_id=request_id)
 
     def capture_fullscreen_for_mobile(self, x: int | None = None, y: int | None = None) -> None:
         request_id = uuid4().hex
@@ -168,6 +190,7 @@ class AssistantWorkflow:
         if not png_images and not (user_text or "").strip():
             self._fail("请输入文字或至少添加 1 张截图")
             return
+        analysis = self._begin_analysis()
         started_payload: dict[str, Any] = {
             "mode": "mobile_screenshots",
             "image_count": len(png_images),
@@ -185,9 +208,11 @@ class AssistantWorkflow:
             started_payload,
             user_text=user_text,
             use_conversation=use_conversation,
+            analysis=analysis,
         )
 
     def clear_conversation(self) -> dict[str, Any]:
+        self.cancel_active_analysis()
         released_turns = len(self.mobile_conversation)
         self.mobile_conversation = []
         gc.collect()
@@ -205,6 +230,9 @@ class AssistantWorkflow:
             return payload
         choice = apply_tier(tier)
         payload = choice.to_payload() if hasattr(choice, "to_payload") else {"tier": str(tier)}
+        available_routes = getattr(client, "available_routes", None)
+        if callable(available_routes):
+            payload["available_routes"] = available_routes()
         self._publish("model.changed", uuid4().hex, payload)
         self.on_status(f"模型：{payload.get('display_name') or payload.get('tier')}")
         return payload
@@ -241,6 +269,7 @@ class AssistantWorkflow:
         started_payload: dict[str, Any],
         user_text: str | None = None,
         use_conversation: bool = False,
+        analysis: tuple[int, CancellationToken] | None = None,
     ) -> None:
         self._analyze_pngs(
             [png],
@@ -249,6 +278,7 @@ class AssistantWorkflow:
             started_payload,
             user_text=user_text,
             use_conversation=use_conversation,
+            analysis=analysis,
         )
 
     def _analyze_pngs(
@@ -259,9 +289,10 @@ class AssistantWorkflow:
         started_payload: dict[str, Any],
         user_text: str | None = None,
         use_conversation: bool = False,
+        analysis: tuple[int, CancellationToken] | None = None,
     ) -> None:
         self.on_capture_finished()
-        generation = self._begin_analysis()
+        generation, cancel_token = analysis or self._begin_analysis()
         try:
             if not self._run_if_active(generation, self.on_stream_started):
                 return
@@ -270,9 +301,17 @@ class AssistantWorkflow:
             chunks: list[str] = []
             conversation = cap_conversation_memory(self.mobile_conversation) if use_conversation else None
             if hasattr(self.ai_client, "analyze_images_stream"):
-                stream = self.ai_client.analyze_images_stream(png_images, user_text=user_text, conversation=conversation)
+                method = self.ai_client.analyze_images_stream
+                kwargs = {"user_text": user_text, "conversation": conversation}
+                if "cancel_token" in inspect.signature(method).parameters:
+                    kwargs["cancel_token"] = cancel_token
+                stream = method(png_images, **kwargs)
             elif png_images:
-                stream = self.ai_client.analyze_image_stream(png_images[0], user_text=user_text, conversation=conversation)
+                method = self.ai_client.analyze_image_stream
+                kwargs = {"user_text": user_text, "conversation": conversation}
+                if "cancel_token" in inspect.signature(method).parameters:
+                    kwargs["cancel_token"] = cancel_token
+                stream = method(png_images[0], **kwargs)
             else:
                 raise RuntimeError("当前 AI 客户端不支持无图追问")
             for delta in stream:
@@ -306,14 +345,30 @@ class AssistantWorkflow:
             if not self._run_if_active(generation, lambda: self._apply_local_result(text, payload["result"])):
                 return
             self._publish_selection_status("completed", "答案已生成，可以继续框选或全屏截题")
+        except AnalysisCancelled:
+            return
         except Exception as exc:
             if self._is_active(generation):
                 self._fail(str(exc), request_id=request_id)
 
-    def _begin_analysis(self) -> int:
+    def cancel_active_analysis(self) -> None:
         with self._generation_lock:
             self._generation += 1
-            return self._generation
+            token = self._active_cancel_token
+            self._active_cancel_token = None
+        if token is not None:
+            token.cancel()
+
+    def _begin_analysis(self) -> tuple[int, CancellationToken]:
+        token = CancellationToken()
+        with self._generation_lock:
+            self._generation += 1
+            previous_token = self._active_cancel_token
+            self._active_cancel_token = token
+            generation = self._generation
+        if previous_token is not None:
+            previous_token.cancel()
+        return generation, token
 
     def _is_active(self, generation: int) -> bool:
         with self._generation_lock:

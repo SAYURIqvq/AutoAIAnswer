@@ -136,6 +136,7 @@ class MainWindow(QMainWindow):
             self.model_tier_combo.addItem(f"{vendor} · {model}", route_id)
         index = self.model_tier_combo.findData(self.model_tier)
         self.model_tier_combo.setCurrentIndex(index if index >= 0 else 0)
+        self._refresh_model_route_availability()
         self.model_tier_combo.currentIndexChanged.connect(self._on_desktop_model_tier)
         self.save_providers_button = QPushButton("保存模型配置")
         self.save_providers_button.clicked.connect(self.save_provider_settings)
@@ -349,6 +350,7 @@ class MainWindow(QMainWindow):
         self.deepseek_key = deepseek_key
         self.openrouter_key = openrouter_key
         self.doubao_key = doubao_key
+        self._refresh_model_route_availability()
         self.model_tier = normalize_model_tier(self.model_tier_combo.currentData())
         self.app_settings.setValue("providers/deepseek_key", deepseek_key)
         self.app_settings.setValue("providers/openrouter_key", openrouter_key)
@@ -368,6 +370,34 @@ class MainWindow(QMainWindow):
 
     def set_provider(self, provider: str) -> None:
         self._refresh_provider_label(provider)
+
+    def _refresh_model_route_availability(self) -> None:
+        has_provider = {
+            "doubao": bool(self.doubao_key.strip()),
+            "openrouter": bool(self.openrouter_key.strip()),
+            "deepseek": bool(self.deepseek_key.strip()),
+        }
+        provider_by_route = {
+            "doubao-seed-vision": "doubao",
+            "openrouter-qwen-235b": "openrouter",
+            "openrouter-qwen-32b": "openrouter",
+            "deepseek-flash": "deepseek",
+        }
+        for index, (route_id, vendor, model_name) in enumerate(route_options()):
+            available = has_provider.get(provider_by_route.get(route_id, ""), False)
+            suffix = "" if available else "（你还没有连接模型喔）"
+            self.model_tier_combo.setItemText(index, f"{vendor} · {model_name}{suffix}")
+            item = self.model_tier_combo.model().item(index)
+            if item is not None:
+                item.setEnabled(available)
+        current_item = self.model_tier_combo.model().item(self.model_tier_combo.currentIndex())
+        if current_item is not None and not current_item.isEnabled():
+            for index in range(self.model_tier_combo.count()):
+                item = self.model_tier_combo.model().item(index)
+                if item is not None and item.isEnabled():
+                    self.model_tier_combo.setCurrentIndex(index)
+                    self.model_tier = normalize_model_tier(self.model_tier_combo.currentData())
+                    break
 
     def _refresh_provider_label(self, provider: str | None = None) -> None:
         client = self.workflow.ai_client if self.workflow is not None else None
@@ -778,6 +808,9 @@ class MainWindow(QMainWindow):
         apply_tier = getattr(client, "apply_model_tier", None)
         if callable(apply_tier):
             payload = apply_tier(self.model_tier, notify=False).to_payload()
+            available_routes = getattr(client, "available_routes", None)
+            if callable(available_routes):
+                payload["available_routes"] = available_routes()
         else:
             payload = {"tier": self.model_tier}
         if self.publisher is not None:
@@ -828,6 +861,8 @@ class MainWindow(QMainWindow):
                 self._force_quit = True
                 event.accept()
         self.overlay.close()
+        if self.workflow is not None:
+            self.workflow.cancel_active_analysis()
         if self.mouse_listener is not None:
             self.mouse_listener.stop()
         if self.publisher is not None:

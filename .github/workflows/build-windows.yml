@@ -78,7 +78,8 @@ jobs:
         shell: pwsh
         run: |
           gh release view "$env:GITHUB_REF_NAME" `
-            || gh release create "$env:GITHUB_REF_NAME" --title "$env:GITHUB_REF_NAME" --notes "Automated Windows build."
+            || gh release create "$env:GITHUB_REF_NAME" --title "$env:GITHUB_REF_NAME" --notes "AutoAIAnswer desktop release." `
+            || gh release view "$env:GITHUB_REF_NAME"
 
       - name: Attach zip to tagged release
         if: startsWith(github.ref, 'refs/tags/')

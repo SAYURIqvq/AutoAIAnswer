@@ -7,10 +7,28 @@ from ai_screenshot_assistant.ai.client import (
     ALBUM_IMAGE_MAX_SIDE,
     OpenRouterVisionClient,
     ProviderConfig,
+    CancellationToken,
     _prepare_image_for_ai,
     _prepare_image_for_album,
     parse_ai_result,
 )
+
+
+def test_cancellation_token_closes_attached_response() -> None:
+    class Response:
+        closed = False
+
+        def close(self):
+            self.closed = True
+
+    response = Response()
+    token = CancellationToken()
+    token.attach_response(response)
+
+    token.cancel()
+
+    assert response.closed is True
+    assert token.cancelled is True
 
 
 def test_parse_json_ai_result() -> None:

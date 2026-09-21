@@ -4,6 +4,8 @@ import base64
 import io
 import json
 import re
+import inspect
+import threading
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, replace
 from typing import Any
@@ -14,6 +16,7 @@ from PIL import Image, UnidentifiedImageError
 from ai_screenshot_assistant.ai.models import (
     DEFAULT_MODEL_TIER,
     DOUBAO_VISION_MODEL,
+    MODEL_ROUTES,
     ModelChoice,
     PROVIDER_LABELS,
     resolve_model_choice,
@@ -45,6 +48,47 @@ class AIResult:
     answer: str | None = None
     reason: str | None = None
     confidence: str | None = None
+
+
+class AnalysisCancelled(Exception):
+    """Raised internally when a newer screenshot replaces a streaming request."""
+
+
+class CancellationToken:
+    def __init__(self) -> None:
+        self._cancelled = threading.Event()
+        self._lock = threading.Lock()
+        self._response: Any = None
+
+    @property
+    def cancelled(self) -> bool:
+        return self._cancelled.is_set()
+
+    def attach_response(self, response: Any) -> None:
+        with self._lock:
+            already_cancelled = self.cancelled
+            if not already_cancelled:
+                self._response = response
+        if already_cancelled:
+            response.close()
+            raise AnalysisCancelled()
+
+    def detach_response(self, response: Any) -> None:
+        with self._lock:
+            if self._response is response:
+                self._response = None
+
+    def cancel(self) -> None:
+        self._cancelled.set()
+        with self._lock:
+            response = self._response
+            self._response = None
+        if response is not None:
+            response.close()
+
+    def raise_if_cancelled(self) -> None:
+        if self.cancelled:
+            raise AnalysisCancelled()
 
 
 def parse_ai_result(text: str) -> AIResult:
@@ -145,15 +189,21 @@ class VisionClient:
         png_bytes: bytes,
         user_text: str | None = None,
         conversation: list[dict[str, str]] | None = None,
+        cancel_token: CancellationToken | None = None,
     ) -> Iterator[str]:
-        yield from self.analyze_images_stream([png_bytes], user_text=user_text, conversation=conversation)
+        yield from self.analyze_images_stream(
+            [png_bytes], user_text=user_text, conversation=conversation, cancel_token=cancel_token
+        )
 
     def analyze_images_stream(
         self,
         png_images: list[bytes],
         user_text: str | None = None,
         conversation: list[dict[str, str]] | None = None,
+        cancel_token: CancellationToken | None = None,
     ) -> Iterator[str]:
+        if cancel_token is not None:
+            cancel_token.raise_if_cancelled()
         if not self.provider.api_key:
             raise RuntimeError(f"{self.provider.name} API Key 不能为空")
         content: list[dict[str, Any]] = [{"type": "text", "text": _build_user_prompt(user_text, conversation)}]
@@ -186,19 +236,27 @@ class VisionClient:
             stream=True,
             timeout=self.provider.timeout_seconds,
         ) as response:
-            response.raise_for_status()
-            for raw_line in response.iter_lines(chunk_size=1, decode_unicode=False):
-                if not raw_line:
-                    continue
-                line = raw_line.decode("utf-8", errors="replace")
-                if not line.startswith("data: "):
-                    continue
-                data = line.removeprefix("data: ").strip()
-                if data == "[DONE]":
-                    break
-                delta = self._extract_delta(data)
-                if delta:
-                    yield delta
+            if cancel_token is not None:
+                cancel_token.attach_response(response)
+            try:
+                response.raise_for_status()
+                for raw_line in response.iter_lines(chunk_size=1, decode_unicode=False):
+                    if cancel_token is not None:
+                        cancel_token.raise_if_cancelled()
+                    if not raw_line:
+                        continue
+                    line = raw_line.decode("utf-8", errors="replace")
+                    if not line.startswith("data: "):
+                        continue
+                    data = line.removeprefix("data: ").strip()
+                    if data == "[DONE]":
+                        break
+                    delta = self._extract_delta(data)
+                    if delta:
+                        yield delta
+            finally:
+                if cancel_token is not None:
+                    cancel_token.detach_response(response)
 
     @staticmethod
     def _extract_delta(data: str) -> str:
@@ -357,13 +415,22 @@ class FailoverVisionClient:
         png_images: list[bytes],
         user_text: str | None,
         conversation: list[dict[str, str]] | None,
+        cancel_token: CancellationToken | None = None,
     ) -> Iterator[str]:
         if hasattr(client, "analyze_images_stream"):
-            yield from client.analyze_images_stream(png_images, user_text=user_text, conversation=conversation)
+            method = client.analyze_images_stream
+            kwargs = {"user_text": user_text, "conversation": conversation}
+            if "cancel_token" in inspect.signature(method).parameters:
+                kwargs["cancel_token"] = cancel_token
+            yield from method(png_images, **kwargs)
             return
         if len(png_images) != 1:
             raise RuntimeError("当前 AI 客户端不支持多张截图")
-        yield from client.analyze_image_stream(png_images[0], user_text=user_text, conversation=conversation)
+        method = client.analyze_image_stream
+        kwargs = {"user_text": user_text, "conversation": conversation}
+        if "cancel_token" in inspect.signature(method).parameters:
+            kwargs["cancel_token"] = cancel_token
+        yield from method(png_images[0], **kwargs)
 
     def _has_provider(self, name: str) -> bool:
         return {
@@ -399,6 +466,9 @@ class FailoverVisionClient:
             provider = None
         return str(getattr(provider, "model", "") or "")
 
+    def available_routes(self) -> list[str]:
+        return [route_id for route_id, route in MODEL_ROUTES.items() if self._has_provider(route.provider)]
+
     def apply_model_tier(self, tier: str, *, notify: bool = False) -> ModelChoice:
         choice = resolve_model_choice(
             tier,
@@ -427,14 +497,18 @@ class FailoverVisionClient:
         png_bytes: bytes,
         user_text: str | None = None,
         conversation: list[dict[str, str]] | None = None,
+        cancel_token: CancellationToken | None = None,
     ) -> Iterator[str]:
-        yield from self.analyze_images_stream([png_bytes], user_text=user_text, conversation=conversation)
+        yield from self.analyze_images_stream(
+            [png_bytes], user_text=user_text, conversation=conversation, cancel_token=cancel_token
+        )
 
     def analyze_images_stream(
         self,
         png_images: list[bytes],
         user_text: str | None = None,
         conversation: list[dict[str, str]] | None = None,
+        cancel_token: CancellationToken | None = None,
     ) -> Iterator[str]:
         if not self._deepseek_has_key and not self._openrouter_has_key and not self._doubao_has_key:
             raise RuntimeError("请至少填写 DeepSeek、OpenRouter 或豆包其中一把 API Key")
@@ -446,6 +520,7 @@ class FailoverVisionClient:
                 png_images,
                 user_text,
                 conversation,
+                cancel_token,
             )
             return
         except requests.HTTPError as exc:
@@ -458,7 +533,9 @@ class FailoverVisionClient:
                 continue
             self.current_provider = name
             self.on_provider_changed(name)
-            yield from self._stream_from_client(self._client_for(name), png_images, user_text, conversation)
+            yield from self._stream_from_client(
+                self._client_for(name), png_images, user_text, conversation, cancel_token
+            )
             return
         vendor = PROVIDER_LABELS.get(failed, failed)
         raise RuntimeError(f"{vendor} 额度不足（HTTP 402），且没有其他可用 Key")

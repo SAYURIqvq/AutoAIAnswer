@@ -60,6 +60,9 @@ def test_mobile_page_exposes_model_routes_and_clear_chat() -> None:
     assert "conversation.cleared" in js
     assert "model.changed" in js
     assert "function removeSentChatScreenshots" in js
+    assert "function stopActiveAssistantMessage" in js
+    assert "latestChatRequestId" in js
+    assert "latestDirectRequestId" in js
     assert "#model-route" in css
     assert ".clear-chat" in css
     assert ".save-album" in css

@@ -31,6 +31,8 @@
   let activeAssistantBubble = null;
   let activeAssistantText = "";
   let activeDirectRequestId = null;
+  let latestChatRequestId = null;
+  let latestDirectRequestId = null;
   let renderScheduled = false;
   let albumItems = [];
   let nextAlbumId = 1;
@@ -377,6 +379,8 @@
     activeAssistantBubble = null;
     activeAssistantText = "";
     activeDirectRequestId = null;
+    latestChatRequestId = null;
+    latestDirectRequestId = null;
     buffer = "";
     albumItems = [];
     hideAlbumLongPressSheet();
@@ -402,6 +406,21 @@
     if (persist !== false) {
       localStorage.setItem(modelTierKey, next);
     }
+  }
+
+  function applyModelAvailability(availableRoutes) {
+    if (!modelRoute || !Array.isArray(availableRoutes)) {
+      return;
+    }
+    const available = new Set(availableRoutes);
+    Array.from(modelRoute.options).forEach(function (option) {
+      if (!option.dataset.baseLabel) {
+        option.dataset.baseLabel = option.textContent;
+      }
+      const enabled = available.has(option.value);
+      option.disabled = !enabled;
+      option.textContent = option.dataset.baseLabel + (enabled ? "" : "（你还没有连接模型喔）");
+    });
   }
 
   function sendModelTier(tier) {
@@ -546,13 +565,26 @@
     }
   }
 
+  function stopActiveAssistantMessage() {
+    if (!activeAssistantBubble) {
+      return;
+    }
+    const stopped = activeAssistantText
+      ? `${activeAssistantText}\n\n（已停止）`
+      : "（已停止）";
+    renderFormattedText(activeAssistantBubble, stopped);
+    activeChatRequestId = null;
+    activeAssistantBubble = null;
+    activeAssistantText = "";
+  }
+
   function isOutdatedAnswerEvent(event) {
     const requestId = String(event.request_id || "");
     if (requestId.startsWith("fullscreen-")) {
-      return requestId !== activeDirectRequestId;
+      return requestId !== latestDirectRequestId;
     }
     if (requestId.startsWith("chat-")) {
-      return activeChatRequestId !== null && requestId !== activeChatRequestId;
+      return requestId !== latestChatRequestId;
     }
     return false;
   }
@@ -621,7 +653,15 @@
     } else if (event.type === "conversation.cleared") {
       resetChatUi();
     } else if (event.type === "model.changed") {
+      applyModelAvailability(payload.available_routes);
       setActiveTier(payload.route || payload.tier || currentTier, true);
+      if (modelRoute && modelRoute.selectedOptions[0] && modelRoute.selectedOptions[0].disabled) {
+        const fallback = Array.from(modelRoute.options).find(function (option) { return !option.disabled; });
+        if (fallback) {
+          setActiveTier(fallback.value, true);
+          sendModelTier(fallback.value);
+        }
+      }
       if (payload.display_name && modelHint) {
         modelHint.textContent = payload.display_name;
       }
@@ -661,6 +701,8 @@
       return;
     }
     activeDirectRequestId = nextRequestId("fullscreen");
+    latestDirectRequestId = activeDirectRequestId;
+    stopActiveAssistantMessage();
     buffer = "";
     setOutput("分析中…");
     fullscreenButton.disabled = true;
@@ -743,6 +785,10 @@
     }
     const images = chatImages.map(function (screenshot) { return screenshot.image; });
     const requestId = nextRequestId("chat");
+    stopActiveAssistantMessage();
+    activeDirectRequestId = null;
+    latestDirectRequestId = null;
+    latestChatRequestId = requestId;
     activeChatRequestId = requestId;
     activeAssistantBubble = null;
     activeAssistantText = "";

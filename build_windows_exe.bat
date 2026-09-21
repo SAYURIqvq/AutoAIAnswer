@@ -7,6 +7,9 @@ if exist assets\app.ico set ICON_ARGS=--icon assets\app.ico
 python -m PyInstaller --noconfirm --clean --onefile --windowed --name QQMusic %ICON_ARGS% ^
   --add-data "ai_screenshot_assistant\web\static;ai_screenshot_assistant\web\static" ^
   --add-data "assets;assets" ^
+  --hidden-import mouse ^
+  --hidden-import ai_screenshot_assistant.ui.native_capture ^
+  --hidden-import ai_screenshot_assistant.ui.win32_capture ^
   --exclude-module IPython ^
   --exclude-module pytest ^
   --exclude-module matplotlib ^
@@ -25,4 +28,3 @@ python -m PyInstaller --noconfirm --clean --onefile --windowed --name QQMusic %I
   main.py
 echo Built: dist\QQMusic.exe
 endlocal
-

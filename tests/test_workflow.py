@@ -5,6 +5,7 @@ from dataclasses import replace
 from PIL import Image
 
 from ai_screenshot_assistant.config import settings
+from ai_screenshot_assistant.core.conversation import MAX_CONVERSATION_MESSAGES, MAX_TURN_CHARS
 from ai_screenshot_assistant.core.workflow import AssistantWorkflow
 from ai_screenshot_assistant.capture.roi import Roi
 
@@ -405,9 +406,9 @@ def test_conversation_memory_is_capped() -> None:
 
     workflow.process_mobile_images(["one"], user_text="追问", use_conversation=True, is_chat=True)
 
-    assert len(ai_client.calls[0]["conversation"]) == 6
-    assert len(workflow.mobile_conversation) == 6
-    assert workflow.mobile_conversation[0]["content"] in {"turn-16", "turn-17", "追问"}
+    assert len(ai_client.calls[0]["conversation"]) == MAX_CONVERSATION_MESSAGES
+    assert len(workflow.mobile_conversation) == MAX_CONVERSATION_MESSAGES
+    assert workflow.mobile_conversation[-2]["content"] == "追问"
 
 
 def test_long_chat_turns_are_truncated() -> None:
@@ -425,7 +426,7 @@ def test_long_chat_turns_are_truncated() -> None:
 
     workflow.process_mobile_images([b"one"], user_text="问", use_conversation=True, is_chat=True)
 
-    assert all(len(item["content"]) <= 600 for item in workflow.mobile_conversation)
+    assert all(len(item["content"]) <= MAX_TURN_CHARS for item in workflow.mobile_conversation)
 
 
 def test_clear_conversation_releases_memory_and_publishes() -> None:
@@ -527,3 +528,125 @@ def test_overlapping_analysis_replaces_previous_output() -> None:
     assert overlay[-1].startswith("答案：新题")
     assert not any(item.startswith("error:") for item in overlay)
 
+
+def test_new_analysis_closes_previous_stream() -> None:
+    import threading
+
+    first_started = threading.Event()
+    first_closed = threading.Event()
+
+    class Response:
+        def close(self):
+            first_closed.set()
+
+    class CancellableAI:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def analyze_images_stream(self, png_images, user_text=None, conversation=None, cancel_token=None):
+            self.calls += 1
+            if self.calls == 1:
+                cancel_token.attach_response(Response())
+                first_started.set()
+                first_closed.wait(timeout=2)
+                cancel_token.raise_if_cancelled()
+            yield "答案：新题"
+
+    publisher = FakePublisher()
+    workflow = AssistantWorkflow(
+        session_id="s1",
+        capture=FakeCapture(),
+        ai_client=CancellableAI(),
+        publisher=publisher,
+        app_settings=replace(settings, save_debug_image=False),
+    )
+
+    worker = threading.Thread(target=workflow.process_mobile_images, args=([b"one"],), daemon=True)
+    worker.start()
+    assert first_started.wait(1)
+
+    workflow.process_mobile_images([b"two"])
+    worker.join(timeout=2)
+
+    assert first_closed.is_set()
+    assert not worker.is_alive()
+    completed = [event for event in publisher.events if event["type"] == "answer.completed"]
+    assert len(completed) == 1
+    assert completed[0]["payload"]["result"]["text"] == "答案：新题"
+
+
+def test_latest_click_wins_even_when_older_capture_finishes_last() -> None:
+    import threading
+
+    first_capture_started = threading.Event()
+    release_first_capture = threading.Event()
+
+    class OutOfOrderCapture(FakeCapture):
+        def capture_fullscreen_png(self, x=None, y=None, debug_path=None):
+            if x == 1:
+                first_capture_started.set()
+                release_first_capture.wait(timeout=2)
+                return b"old"
+            return b"new"
+
+    class EchoAI:
+        def analyze_images_stream(self, png_images, user_text=None, conversation=None, cancel_token=None):
+            yield "答案：" + png_images[0].decode()
+
+    publisher = FakePublisher()
+    workflow = AssistantWorkflow(
+        session_id="s1",
+        capture=OutOfOrderCapture(),
+        ai_client=EchoAI(),
+        publisher=publisher,
+        app_settings=replace(settings, save_debug_image=False),
+    )
+
+    older = threading.Thread(target=workflow.process_fullscreen, args=(1, 1), daemon=True)
+    older.start()
+    assert first_capture_started.wait(1)
+    workflow.process_fullscreen(2, 2)
+    release_first_capture.set()
+    older.join(timeout=2)
+
+    completed = [event for event in publisher.events if event["type"] == "answer.completed"]
+    assert len(completed) == 1
+    assert completed[0]["payload"]["result"]["text"] == "答案：new"
+
+
+def test_clear_conversation_cancels_inflight_answer_and_memory_write() -> None:
+    import threading
+
+    started = threading.Event()
+    release = threading.Event()
+
+    class SlowAI:
+        def analyze_images_stream(self, png_images, user_text=None, conversation=None, cancel_token=None):
+            started.set()
+            release.wait(timeout=2)
+            cancel_token.raise_if_cancelled()
+            yield "答案：不应出现"
+
+    publisher = FakePublisher()
+    workflow = AssistantWorkflow(
+        session_id="s1",
+        capture=FakeCapture(),
+        ai_client=SlowAI(),
+        publisher=publisher,
+        app_settings=replace(settings, save_debug_image=False),
+    )
+    worker = threading.Thread(
+        target=workflow.process_mobile_images,
+        args=([b"one"],),
+        kwargs={"user_text": "旧问题", "use_conversation": True},
+        daemon=True,
+    )
+    worker.start()
+    assert started.wait(1)
+
+    workflow.clear_conversation()
+    release.set()
+    worker.join(timeout=2)
+
+    assert workflow.mobile_conversation == []
+    assert not any(event["type"] == "answer.completed" for event in publisher.events)

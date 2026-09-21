@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-MAX_CONVERSATION_MESSAGES = 6
-MAX_TURN_CHARS = 600
+MAX_CONVERSATION_MESSAGES = 20
+MAX_TURN_CHARS = 1200
 
 
 def cap_conversation_memory(items: list[dict[str, str]] | None) -> list[dict[str, str]]:

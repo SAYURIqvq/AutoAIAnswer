@@ -19,6 +19,7 @@ class Session:
     pair_token: str
     created_at: datetime
     expire_at: datetime
+    ttl_minutes: int = 60
     desktop: WebSocket | None = None
     desktop_commands: WebSocket | None = None
     mobile: WebSocket | None = None
@@ -70,6 +71,7 @@ class SessionManager:
             pair_token=pair_token,
             created_at=now,
             expire_at=now + timedelta(minutes=ttl_minutes),
+            ttl_minutes=ttl_minutes,
         )
         self.sessions[session_id] = session
         self.tokens[pair_token] = session_id
@@ -77,8 +79,12 @@ class SessionManager:
 
     def get(self, session_id: str) -> Session | None:
         session = self.sessions.get(session_id)
-        if session is None or session.expire_at < datetime.now(timezone.utc):
+        if session is None:
             return None
+        now = datetime.now(timezone.utc)
+        if session.expire_at < now and session.desktop is None and session.desktop_commands is None:
+            return None
+        session.expire_at = now + timedelta(minutes=session.ttl_minutes)
         return session
 
     def get_by_token(self, token: str) -> Session | None:

@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta, timezone
+
 from fastapi.testclient import TestClient
 
 from ai_screenshot_assistant.backend.app import app
@@ -36,6 +38,16 @@ def test_create_session_rejects_weak_requested_pair_token() -> None:
 
     assert session["pair_token"] != "too-short"
     assert len(session["pair_token"]) >= 24
+
+
+def test_active_desktop_keeps_stable_pair_session_alive() -> None:
+    local_manager = SessionManager()
+    session = local_manager.create_session(ttl_minutes=1, pair_token="stable_pair_token_1234567890")
+    session.desktop = object()
+    session.expire_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+
+    assert local_manager.get_by_token(session.pair_token) is session
+    assert session.expire_at > datetime.now(timezone.utc)
 
 
 def test_desktop_events_reach_mobile_websocket() -> None:
