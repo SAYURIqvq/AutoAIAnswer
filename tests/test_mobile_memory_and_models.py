@@ -41,9 +41,14 @@ def test_mobile_page_exposes_model_routes_and_clear_chat() -> None:
     css = (STATIC / "style.css").read_text(encoding="utf-8")
 
     assert 'id="model-route"' in html
-    assert 'value="doubao-seed-vision"' in html
+    assert 'value="doubao-seed-2-0-mini"' in html
+    assert 'value="doubao-seed-2-0-lite"' in html
+    assert 'value="doubao-seed-2-1-turbo"' in html
+    assert 'value="doubao-seed-2-1-pro"' in html
     assert 'value="openrouter-qwen-235b"' in html
     assert 'value="openrouter-qwen-32b"' in html
+    assert 'value="openrouter-qwen-8b"' in html
+    assert 'value="openrouter-deepseek-flash"' in html
     assert 'value="deepseek-flash"' in html
     assert "清空聊天" in html
     assert "保存到相册" in html

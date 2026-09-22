@@ -49,13 +49,28 @@
     low: "deepseek-flash",
     easy: "deepseek-flash",
     "简单": "deepseek-flash",
-    doubao: "doubao-seed-vision"
+    doubao: "doubao-seed-2-1-turbo",
+    "豆包": "doubao-seed-2-1-turbo",
+    "doubao-seed-vision": "doubao-seed-2-1-turbo",
+    "doubao-seed-1-6-vision": "doubao-seed-2-1-turbo",
+    "doubao-seed-1-6-vision-250815": "doubao-seed-2-1-turbo",
+    "doubao-seed-2-0-mini-260428": "doubao-seed-2-0-mini",
+    "doubao-seed-2-0-lite-260428": "doubao-seed-2-0-lite",
+    "doubao-seed-2-1-turbo-260628": "doubao-seed-2-1-turbo",
+    "doubao-seed-2-1-pro-260915": "doubao-seed-2-1-pro",
+    "deepseek/deepseek-v4.1-flash": "openrouter-deepseek-flash",
+    "openrouter-deepseek": "openrouter-deepseek-flash"
   };
   const knownRoutes = {
-    "doubao-seed-vision": "豆包 / doubao-seed-1-6-vision-250815",
-    "openrouter-qwen-235b": "OpenRouter / qwen/qwen3-vl-235b-a22b-thinking",
-    "openrouter-qwen-32b": "OpenRouter / qwen/qwen3-vl-32b-instruct",
-    "deepseek-flash": "DeepSeek / deepseek-flash"
+    "doubao-seed-2-0-mini": "豆包 Mini / doubao-seed-2-0-mini-260428（最快 / 准确一般）",
+    "doubao-seed-2-0-lite": "豆包 Lite / doubao-seed-2-0-lite-260428（较快 / 准确中等）",
+    "doubao-seed-2-1-turbo": "豆包 Turbo / doubao-seed-2-1-turbo-260628（快 / 准确较好）",
+    "doubao-seed-2-1-pro": "豆包 Pro / doubao-seed-2-1-pro-260915（最准 / 较慢）",
+    "openrouter-qwen-235b": "OpenRouter / qwen/qwen3-vl-235b-a22b-thinking（最准 / 较慢 / 会思考）",
+    "openrouter-qwen-32b": "OpenRouter / qwen/qwen3-vl-32b-instruct（较快 / 准确较好）",
+    "openrouter-qwen-8b": "OpenRouter / qwen/qwen3-vl-8b-instruct（最快 / 准确一般）",
+    "openrouter-deepseek-flash": "OpenRouter DeepSeek / deepseek/deepseek-v4.1-flash（快 / 准确较好）",
+    "deepseek-flash": "DeepSeek 官方 / deepseek-flash（快 / 准确一般）"
   };
   let currentTier = normalizeRoute(localStorage.getItem(modelTierKey) || "openrouter-qwen-235b");
   const maxScreenshots = 5;

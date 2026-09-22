@@ -33,7 +33,7 @@ from PySide6.QtWidgets import (
 )
 
 from ai_screenshot_assistant.ai.client import FailoverVisionClient, ProviderConfig
-from ai_screenshot_assistant.ai.models import DEFAULT_MODEL_TIER, normalize_model_tier, route_options
+from ai_screenshot_assistant.ai.models import DEFAULT_MODEL_TIER, MODEL_ROUTES, normalize_model_tier, route_options
 from ai_screenshot_assistant.backend_api import BackendApi, BackendSession
 from ai_screenshot_assistant.capture.screenshot import ScreenCapture
 from ai_screenshot_assistant.config import settings
@@ -377,14 +377,8 @@ class MainWindow(QMainWindow):
             "openrouter": bool(self.openrouter_key.strip()),
             "deepseek": bool(self.deepseek_key.strip()),
         }
-        provider_by_route = {
-            "doubao-seed-vision": "doubao",
-            "openrouter-qwen-235b": "openrouter",
-            "openrouter-qwen-32b": "openrouter",
-            "deepseek-flash": "deepseek",
-        }
         for index, (route_id, vendor, model_name) in enumerate(route_options()):
-            available = has_provider.get(provider_by_route.get(route_id, ""), False)
+            available = has_provider.get(MODEL_ROUTES[route_id].provider, False)
             suffix = "" if available else "（你还没有连接模型喔）"
             self.model_tier_combo.setItemText(index, f"{vendor} · {model_name}{suffix}")
             item = self.model_tier_combo.model().item(index)
