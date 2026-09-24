@@ -231,6 +231,7 @@ class VisionClient:
             json=payload,
             stream=True,
             timeout=self.provider.timeout_seconds,
+            verify=False,
         ) as response:
             if cancel_token is not None:
                 cancel_token.attach_response(response)

@@ -110,6 +110,7 @@ def test_doubao_uses_ark_responses_api(monkeypatch) -> None:
     def fake_post(url, **kwargs):
         captured["url"] = url
         captured["json"] = kwargs["json"]
+        captured["verify"] = kwargs["verify"]
         return Response()
 
     monkeypatch.setattr("ai_screenshot_assistant.ai.client.requests.post", fake_post)
@@ -126,6 +127,7 @@ def test_doubao_uses_ark_responses_api(monkeypatch) -> None:
     assert captured["url"] == "https://ark.cn-beijing.volces.com/api/v3/responses"
     assert captured["json"]["model"] == "doubao-seed-1-6-vision-250815"
     assert captured["json"]["stream"] is True
+    assert captured["verify"] is False
     assert captured["json"]["thinking"] == {"type": "disabled"}
     content = captured["json"]["input"][0]["content"]
     assert content[0]["type"] == "input_image"

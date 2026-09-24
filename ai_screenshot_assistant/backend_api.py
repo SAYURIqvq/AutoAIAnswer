@@ -23,7 +23,7 @@ class BackendApi:
 
     def create_session(self, pair_token: str | None = None) -> BackendSession:
         payload = {"pair_token": pair_token} if pair_token else None
-        response = self.http.post(f"{self.base_url}/sessions", json=payload, timeout=10)
+        response = self.http.post(f"{self.base_url}/sessions", json=payload, timeout=10, verify=False)
         response.raise_for_status()
         data = response.json()
         return BackendSession(
