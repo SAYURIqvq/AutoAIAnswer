@@ -21,14 +21,14 @@ def test_create_session_and_mobile_page() -> None:
 def test_mobile_static_assets_are_served_with_expected_content_types() -> None:
     client = TestClient(app)
 
-    css = client.get("/static/style.css?v=0.2.42")
-    js = client.get("/static/app.js?v=0.2.42")
+    css = client.get("/static/style.css?v=0.2.43")
+    js = client.get("/static/app.js?v=0.2.43")
 
     assert css.status_code == 200
     assert css.headers["content-type"].startswith("text/css")
     assert b"--background" in css.content
     assert js.status_code == 200
-    assert js.headers["content-type"].startswith("application/javascript")
+    assert js.headers["content-type"].split(";", 1)[0] in {"application/javascript", "text/javascript"}
     assert b"function connect" in js.content
 
 
