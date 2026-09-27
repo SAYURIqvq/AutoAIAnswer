@@ -644,14 +644,14 @@
     } else if (event.type === "screenshot.captured") {
       if (payload.image) {
         const forChat = payload.add_to_buffer !== false;
-        addAlbumItem(payload.image, payload.size || 0, forChat);
-        renderPreviewList();
-        updateAskButton();
-        const selected = selectedAlbumItems().length;
         if (forChat) {
+          addAlbumItem(payload.image, payload.size || 0, true);
+          renderPreviewList();
+          updateAskButton();
+          const selected = selectedAlbumItems().length;
           setSelectionStatus("completed", `已添加截图，已选 ${selected} 张，可勾选后保存到相册或发送`);
         } else {
-          setSelectionStatus("completed", `截图已到达手机，已选 ${selected} 张，可勾选后保存到相册`);
+          setSelectionStatus("completed", "全屏截图已完成，不加入截图对话附件");
         }
       }
     } else if (event.type === "answer.error") {

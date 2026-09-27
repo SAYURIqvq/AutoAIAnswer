@@ -86,6 +86,17 @@ def test_mobile_send_removes_chat_attachments_from_preview() -> None:
     assert "return !sentIds[item.id]" in js
 
 
+def test_direct_fullscreen_capture_does_not_enter_chat_attachment_preview() -> None:
+    js = (STATIC / "app.js").read_text(encoding="utf-8")
+    captured_chunk = js.split('event.type === "screenshot.captured"', 1)[1].split(
+        'event.type === "answer.error"', 1
+    )[0]
+
+    assert 'if (forChat) {' in captured_chunk
+    assert 'addAlbumItem(payload.image, payload.size || 0, true);' in captured_chunk
+    assert '全屏截图已完成，不加入截图对话附件' in captured_chunk
+
+
 def test_desktop_main_window_uses_quiet_zone_qr_and_memory_caps() -> None:
     source = (ROOT / "ai_screenshot_assistant" / "ui" / "main_window.py").read_text(encoding="utf-8")
 
