@@ -18,6 +18,20 @@ def test_create_session_and_mobile_page() -> None:
     assert session["session_id"] in page.text
 
 
+def test_mobile_static_assets_are_served_with_expected_content_types() -> None:
+    client = TestClient(app)
+
+    css = client.get("/static/style.css?v=0.2.42")
+    js = client.get("/static/app.js?v=0.2.42")
+
+    assert css.status_code == 200
+    assert css.headers["content-type"].startswith("text/css")
+    assert b"--background" in css.content
+    assert js.status_code == 200
+    assert js.headers["content-type"].startswith("application/javascript")
+    assert b"function connect" in js.content
+
+
 def test_create_session_reuses_requested_pair_token() -> None:
     client = TestClient(app)
     token = "stable_pair_token_1234567890"
