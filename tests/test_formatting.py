@@ -1,4 +1,12 @@
-from ai_screenshot_assistant.ai.formatting import format_ai_output, format_sql
+from ai_screenshot_assistant.ai.formatting import ensure_answer_first, format_ai_output, format_sql
+
+
+def test_ensure_answer_first_moves_answer_after_explanation() -> None:
+    assert ensure_answer_first("解析：因为定义可知，应选 B。") == "答案：B\n解析：因为定义可知，应选 B。"
+
+
+def test_ensure_answer_first_does_not_allow_explanation_only() -> None:
+    assert ensure_answer_first("解析：图片中的选项无法辨认。") == "答案：无法确定\n解析：图片中的选项无法辨认。"
 
 
 def test_format_select_with_join_group_having_limit() -> None:

@@ -43,6 +43,25 @@ def test_explicit_position_supports_macos_callback(monkeypatch) -> None:
     assert clicks == [(120, 240)]
 
 
+def test_long_left_then_short_left_emits_two_points(monkeypatch) -> None:
+    long_left = []
+    short_left = []
+    listener = MouseRoiListener(
+        lambda x, y: long_left.append((x, y)),
+        lambda x, y: short_left.append((x, y)),
+    )
+    times = iter((10.0, 12.1, 13.0, 13.2))
+    monkeypatch.setattr("ai_screenshot_assistant.input.mouse_listener.time.monotonic", lambda: next(times))
+
+    listener._handle_left_down((100, 200))
+    listener._handle_left_up()
+    listener._handle_left_down((300, 500))
+    listener._handle_left_up()
+
+    assert long_left == [(100, 200)]
+    assert short_left == [(300, 500)]
+
+
 def test_right_long_press_fires_fullscreen_callback(monkeypatch) -> None:
     long_right = []
     listener = MouseRoiListener(
@@ -114,4 +133,3 @@ def test_control_left_long_press_triggers_fullscreen(monkeypatch) -> None:
 
     assert long_right == [(1, 2)]
     assert long_left == []
-

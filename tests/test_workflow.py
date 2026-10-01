@@ -120,7 +120,7 @@ def test_workflow_streams_and_completes() -> None:
     assert result_holder["reason"] == "TCP reliable"
     assert stream_states == [
         "started",
-        ("completed", '{"answer":"B","reason":"TCP reliable","confidence":"0.95"}'),
+        ("completed", "答案：B\n解析：TCP reliable"),
     ]
     assert stream_chunks == ['{"answer":"B",', '"reason":"TCP reliable",', '"confidence":"0.95"}']
 
@@ -215,7 +215,7 @@ def test_workflow_fullscreen_question_uses_conversation_context() -> None:
         {"role": "user", "content": "第 2 题为什么选 B？"},
         {
             "role": "assistant",
-            "content": '{"answer":"B","reason":"TCP reliable","confidence":"0.95"}',
+            "content": "答案：B\n解析：TCP reliable",
         },
     ]
     started = next(event for event in publisher.events if event["type"] == "answer.started")
@@ -318,7 +318,7 @@ def test_mobile_image_only_chat_is_remembered() -> None:
         {"role": "user", "content": "用户发送了 2 张截图"},
         {
             "role": "assistant",
-            "content": '{"answer":"A","reason":"multi image","confidence":"0.91"}',
+            "content": "答案：A\n解析：multi image",
         },
     ]
     answer_events = [event for event in publisher.events if event["type"].startswith("answer.")]

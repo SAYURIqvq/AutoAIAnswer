@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 
 SQL_KEYWORDS = (
@@ -43,13 +44,63 @@ _ALTER_TABLE_PATTERN = re.compile(
     r"^ALTER\s+TABLE\s+(`[^`]+`|\"[^\"]+\"|[\w.]+)\s+(.+?);?$",
     re.IGNORECASE | re.DOTALL,
 )
+_ANSWER_LABEL = re.compile(r"答案\s*[:：]")
+_REASON_LABEL = re.compile(r"解析\s*[:：]")
+_CHOICE_IN_REASON = re.compile(r"(?:选|选择|应选|答案是)\s*([A-H](?:\s*[、,/]\s*[A-H])*)", re.IGNORECASE)
 
 
 def format_ai_output(text: str) -> str:
+    text = ensure_answer_first(text)
     text = _normalize_answer_fence_spacing(_format_sql_fences(text))
     if "```sql" in text.lower() or not _SQL_START.search(text):
         return text
     return _wrap_answer_sql(text)
+
+
+def ensure_answer_first(text: str) -> str:
+    """Guarantee a visible answer line before any explanation text."""
+    value = (text or "").strip()
+    if not value:
+        return "答案：无法确定\n解析：未能从截图中识别出可确认的答案。"
+
+    try:
+        payload = json.loads(value)
+    except json.JSONDecodeError:
+        payload = None
+    if isinstance(payload, dict) and "answer" in payload:
+        answer = str(payload.get("answer") or "无法确定").strip()
+        reason = str(payload.get("reason") or "未提供解析。").strip()
+        return f"答案：{answer}\n解析：{reason}"
+    if isinstance(payload, dict) and isinstance(payload.get("questions"), list):
+        lines: list[str] = []
+        for index, item in enumerate(payload["questions"], start=1):
+            if not isinstance(item, dict):
+                continue
+            answer = str(item.get("answer") or "无法确定").strip()
+            reason = str(item.get("reason") or "未提供解析。").strip()
+            lines.append(f"【第{index}题】\n答案：{answer}\n解析：{reason}")
+        if lines:
+            return "\n\n".join(lines)
+
+    answer_match = _ANSWER_LABEL.search(value)
+    reason_match = _REASON_LABEL.search(value)
+    if answer_match and (reason_match is None or answer_match.start() < reason_match.start()):
+        return value
+
+    if reason_match is not None:
+        reason = value[reason_match.end():].strip()
+        candidate = _CHOICE_IN_REASON.search(reason)
+        answer = candidate.group(1).replace(" ", "") if candidate else "无法确定"
+        prefix = value[:reason_match.start()].strip()
+        if prefix:
+            reason = f"{prefix}\n{reason}" if reason else prefix
+        return f"答案：{answer}\n解析：{reason or '未提供解析。'}"
+
+    candidate = _CHOICE_IN_REASON.search(value)
+    if candidate:
+        answer = candidate.group(1).replace(" ", "")
+        return f"答案：{answer}\n解析：{value}"
+    return f"答案：无法确定\n解析：{value}"
 
 
 def format_sql(sql: str) -> str:
