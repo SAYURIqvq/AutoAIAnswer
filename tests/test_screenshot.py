@@ -1,7 +1,7 @@
 from PIL import Image
 
 from ai_screenshot_assistant.capture.roi import Roi
-from ai_screenshot_assistant.capture.screenshot import fit_image, monitor_containing_point
+from ai_screenshot_assistant.capture.screenshot import ScreenCapture, fit_image, monitor_containing_point
 from ai_screenshot_assistant.utils.display import scale_roi
 
 
@@ -64,3 +64,17 @@ def test_scale_roi_for_retina() -> None:
 
     assert scaled == Roi(left=200, top=160, width=400, height=240)
     assert scale_roi(roi, 1.0) == roi
+
+
+def test_windows_capture_uses_raw_desktop_coordinates(monkeypatch) -> None:
+    monkeypatch.setattr("ai_screenshot_assistant.capture.screenshot.sys.platform", "win32")
+    monkeypatch.setattr("ai_screenshot_assistant.capture.screenshot.screen_scale_at", lambda *_: 1.5)
+
+    assert ScreenCapture._coordinate_scale(100, 200) == 1.0
+
+
+def test_macos_capture_keeps_display_scale(monkeypatch) -> None:
+    monkeypatch.setattr("ai_screenshot_assistant.capture.screenshot.sys.platform", "darwin")
+    monkeypatch.setattr("ai_screenshot_assistant.capture.screenshot.screen_scale_at", lambda *_: 2.0)
+
+    assert ScreenCapture._coordinate_scale(100, 200) == 2.0

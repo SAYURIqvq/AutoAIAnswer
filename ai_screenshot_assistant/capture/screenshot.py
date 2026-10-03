@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import sys
 from pathlib import Path
 
 from PIL import Image
@@ -52,7 +53,7 @@ class ScreenCapture:
     def capture_png(self, roi: Roi, debug_path: Path | None = None) -> bytes:
         import mss
 
-        scale = screen_scale_at(roi.left, roi.top)
+        scale = self._coordinate_scale(roi.left, roi.top)
         region = scale_roi(roi, scale)
         with mss.mss() as sct:
             shot = sct.grab(region.to_mss_monitor())
@@ -67,12 +68,20 @@ class ScreenCapture:
     ) -> bytes:
         import mss
 
-        scale = screen_scale_at(x, y)
+        scale = self._coordinate_scale(x, y)
         with mss.mss() as sct:
             monitor = monitor_containing_point(sct.monitors, x, y, scale=scale)
             shot = sct.grab(monitor)
             image = Image.frombytes("RGB", shot.size, shot.rgb)
         return self._encode(fit_image(image), debug_path)
+
+    @staticmethod
+    def _coordinate_scale(x: int | None = None, y: int | None = None) -> float:
+        # mouse.get_position() and mss use the same physical desktop coordinates
+        # on Windows. Applying Qt's logical-to-physical ratio again shifts ROI.
+        if sys.platform == "win32":
+            return 1.0
+        return screen_scale_at(x, y)
 
     def _encode(self, image: Image.Image, debug_path: Path | None = None) -> bytes:
         buffer = io.BytesIO()
