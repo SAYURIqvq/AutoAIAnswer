@@ -64,14 +64,6 @@ jobs:
           Copy-Item README.md dist/package/README.md
           Compress-Archive -Path dist/package/* -DestinationPath dist/QQMusic-Windows.zip -Force
 
-      - name: Upload Windows artifact
-        uses: actions/upload-artifact@v4
-        continue-on-error: true
-        with:
-          name: QQMusic-Windows
-          path: dist/QQMusic-Windows.zip
-          if-no-files-found: error
-
       - name: Create tagged release if needed
         if: startsWith(github.ref, 'refs/tags/')
         env:
