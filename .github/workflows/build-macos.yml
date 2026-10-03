@@ -32,6 +32,7 @@ jobs:
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
           name: QQMusic-macOS
           path: dist/QQMusic-macOS.dmg
