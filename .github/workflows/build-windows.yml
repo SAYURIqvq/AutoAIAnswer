@@ -9,8 +9,11 @@ on:
 jobs:
   build-windows:
     runs-on: windows-latest
+    timeout-minutes: 20
     permissions:
       contents: write
+    env:
+      QT_QPA_PLATFORM: offscreen
     steps:
       - name: Check out source
         uses: actions/checkout@v4
