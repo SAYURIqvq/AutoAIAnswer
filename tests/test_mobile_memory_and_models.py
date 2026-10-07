@@ -148,3 +148,21 @@ def test_desktop_main_window_uses_quiet_zone_qr_and_memory_caps() -> None:
 
 def test_websocket_payload_limit_is_finite() -> None:
     assert 1024 * 1024 <= WEBSOCKET_MAX_BYTES <= 16 * 1024 * 1024
+
+
+def test_overlay_plain_code_and_saved_color(qapp, tmp_path) -> None:
+    settings = QSettings(str(tmp_path / "overlay.ini"), QSettings.Format.IniFormat)
+    settings.setValue("overlay/text_color", "#000000")
+    overlay = StreamingOverlay(settings)
+    assert overlay.label.textFormat() == Qt.TextFormat.PlainText
+    assert 'Times New Roman' in overlay.label.styleSheet()
+    assert 'color: #000000' in overlay.label.styleSheet()
+    overlay.set_text_color("#ffffff")
+    overlay.set_font_px(20)
+    assert 'color: #ffffff' in overlay.label.styleSheet()
+    assert 'font-size: 20px' in overlay.label.styleSheet()
+    code = '```cpp\nif (a < b) {\n    return a;\n}\n```'
+    overlay.complete_stream(code)
+    assert overlay.label.text() == code
+    overlay.close()
+    overlay.deleteLater()

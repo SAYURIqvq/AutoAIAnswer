@@ -190,3 +190,8 @@ def test_format_create_table_keeps_column_list_readable() -> None:
         "    amount DECIMAL(10,2) DEFAULT 0 COMMENT '金额, 元'\n"
         ");"
     )
+
+
+def test_python_code_containing_sql_is_not_reformatted() -> None:
+    text = '答案：\n```python\ndef query():\n    return "SELECT id FROM users"\n```\n解析：返回查询。'
+    assert format_ai_output(text) == text

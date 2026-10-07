@@ -368,3 +368,19 @@ def test_album_images_keep_higher_resolution_than_ai() -> None:
     assert max(album.size) <= ALBUM_IMAGE_MAX_SIDE
     assert max(ai_image.size) == AI_IMAGE_MAX_SIDE
     assert max(album.size) > max(ai_image.size)
+
+
+def test_programming_answer_preserves_code_and_indentation() -> None:
+    code = '```python\ndef solve():\n    print("解析：不是字段")\n\nsolve()\n```'
+    result = parse_ai_result(code)
+    assert result.answer == code
+    assert result.reason is None
+    labeled = parse_ai_result("答案：\n" + code + "\n解析：打印结果。")
+    assert labeled.answer == code
+    assert labeled.reason == "打印结果。"
+
+
+def test_mixed_questions_preserve_programming_answer() -> None:
+    result = parse_ai_result('【第1题】选择\n答案：B\n解析：正确。\n\n【第2题】编程\n```python\ndef solve():\n    return 1\n```')
+    assert "B" in result.answer
+    assert "def solve():\n    return 1" in result.answer

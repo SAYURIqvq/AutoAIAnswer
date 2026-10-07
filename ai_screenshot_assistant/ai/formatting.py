@@ -47,7 +47,7 @@ _ALTER_TABLE_PATTERN = re.compile(
 
 def format_ai_output(text: str) -> str:
     text = _normalize_answer_fence_spacing(_format_sql_fences(text))
-    if "```sql" in text.lower() or not _SQL_START.search(text):
+    if "```" in text or not _SQL_START.search(text):
         return text
     return _wrap_answer_sql(text)
 

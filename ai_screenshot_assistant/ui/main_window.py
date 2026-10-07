@@ -168,6 +168,14 @@ class MainWindow(QMainWindow):
         self.font_slider.setValue(font_px)
         self.font_slider.valueChanged.connect(self._on_overlay_font)
         self.overlay.set_font_px(font_px)
+        self.text_color_combo = QComboBox()
+        self.text_color_combo.addItem("白色", "#ffffff")
+        self.text_color_combo.addItem("黑色", "#000000")
+        color_index = self.text_color_combo.findData(
+            str(self.app_settings.value("overlay/text_color", "#ffffff"))
+        )
+        self.text_color_combo.setCurrentIndex(max(0, color_index))
+        self.text_color_combo.currentIndexChanged.connect(self._on_overlay_text_color)
         self.region_gesture_toggle = QCheckBox("开启左键长按 2 秒框选手势")
         self.region_gesture_toggle.setChecked(self.region_gesture_enabled)
         self.region_gesture_toggle.toggled.connect(self.set_region_gesture_enabled)
@@ -219,6 +227,11 @@ class MainWindow(QMainWindow):
         font_row.addWidget(self.font_label)
         font_row.addWidget(self.font_slider, 1)
         layout.addLayout(font_row)
+        color_row = QHBoxLayout()
+        color_row.addWidget(QLabel("字幕颜色："))
+        color_row.addWidget(self.text_color_combo)
+        color_row.addStretch(1)
+        layout.addLayout(color_row)
         layout.addWidget(self.region_gesture_toggle)
         layout.addWidget(self.fullscreen_gesture_toggle)
         layout.addWidget(self.fullscreen_button)
@@ -412,6 +425,11 @@ class MainWindow(QMainWindow):
         self.opacity_label.setText(f"字幕透明度：{percent}%")
         self.app_settings.setValue("overlay/opacity_percent", percent)
         self.overlay.set_opacity_percent(percent)
+
+    def _on_overlay_text_color(self, _index: int) -> None:
+        color = self.text_color_combo.currentData()
+        self.app_settings.setValue("overlay/text_color", color)
+        self.overlay.set_text_color(color)
 
     def _on_overlay_font(self, size: int) -> None:
         self.font_label.setText(f"字幕字号：{size}px")

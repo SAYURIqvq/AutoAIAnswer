@@ -106,7 +106,7 @@ def _parse_multi_question_text(text: str) -> AIResult | None:
         part = part.strip()
         if not part.startswith("【第"):
             continue
-        lines = [line for line in part.splitlines() if line.strip()]
+        lines = part.splitlines()
         heading = lines[0]
         parsed = _parse_answer_first_text("\n".join(lines[1:]))
         answers.append(f"{heading} {parsed.answer or ''}".strip())
@@ -118,19 +118,24 @@ def _parse_multi_question_text(text: str) -> AIResult | None:
 
 
 def _parse_answer_first_text(text: str) -> AIResult:
-    lines = [line.strip() for line in text.strip().splitlines() if line.strip()]
-    if not lines:
+    body = text.strip()
+    if not body:
         return AIResult(text=text)
-    answer = lines[0]
-    for prefix in ("答案：", "答案:"):
-        if answer.startswith(prefix):
-            answer = answer.removeprefix(prefix).strip()
-    reason = "\n".join(lines[1:]).strip() or None
-    if reason:
-        for prefix in ("解析：", "解析:"):
-            if reason.startswith(prefix):
-                reason = reason.removeprefix(prefix).strip()
-    return AIResult(text=text, answer=answer or None, reason=reason)
+    # Only explicit answer/analysis labels define fields; preserve code indentation.
+    if not re.match(r"^答案[:：]", body):
+        return AIResult(text=text, answer=body)
+    body = re.sub(r"^答案[:：][ \t]*", "", body, count=1).lstrip("\n")
+    in_fence = False
+    lines = body.splitlines()
+    for index, line in enumerate(lines):
+        if line.lstrip().startswith("```"):
+            in_fence = not in_fence
+        if not in_fence and re.match(r"^解析[:：]", line):
+            answer = "\n".join(lines[:index]).strip()
+            reason = re.sub(r"^解析[:：][ \t]*", "", line) + "\n" + "\n".join(lines[index + 1:])
+            return AIResult(text=text, answer=answer or None, reason=reason.strip() or None)
+    return AIResult(text=text, answer=body or None)
+
 
 
 def _optional(value: Any) -> str | None:
@@ -300,7 +305,7 @@ def _build_user_prompt(user_text: str | None, conversation: list[dict[str, str]]
         parts.append(
             "手机端用户补充/追问：\n"
             + cleaned_text
-            + "\n\n请优先回答这条补充/追问；如果是选择题，仍先输出选项再给极简解析。"
+            + "\n\n请优先回答这条补充/追问；按实际题型和用户要求输出；只有选择题输出选项和解析，编程题按要求输出代码。"
         )
     return "\n\n".join(parts)
 

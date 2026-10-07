@@ -30,6 +30,9 @@ class StreamingOverlay(QWidget):
         self._opacity_percent = int(app_settings.value("overlay/opacity_percent", 50) or 50)
         self._font_px = int(app_settings.value("overlay/font_px", 18) or 18)
         self._font_px = max(8, min(22, self._font_px))
+        self._text_color = str(app_settings.value("overlay/text_color", "#ffffff"))
+        if self._text_color not in {"#000000", "#ffffff"}:
+            self._text_color = "#ffffff"
         self._native_retry = QTimer(self)
         self._native_retry.setSingleShot(True)
         self._native_retry.timeout.connect(self._apply_native_flags)
@@ -64,6 +67,7 @@ class StreamingOverlay(QWidget):
             )
 
         self.label = QLabel("")
+        self.label.setTextFormat(Qt.TextFormat.PlainText)
         self.label.setWordWrap(True)
         self.label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self._apply_label_style()
@@ -99,9 +103,14 @@ class StreamingOverlay(QWidget):
         self.adjustSize()
         self._schedule_native_flags()
 
+    def set_text_color(self, color: str) -> None:
+        self._text_color = color if color in {"#000000", "#ffffff"} else "#ffffff"
+        self._apply_label_style()
+
     def _apply_label_style(self) -> None:
         self.label.setStyleSheet(
-            f"color: #ffffff; font-size: {self._font_px}px; font-weight: 600;"
+            f'color: {self._text_color}; font-family: "Times New Roman"; '
+            f"font-size: {self._font_px}px; font-weight: 400;"
             "background: transparent; border: none; padding: 4px;"
         )
 
