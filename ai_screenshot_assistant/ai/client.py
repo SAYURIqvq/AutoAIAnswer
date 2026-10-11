@@ -41,6 +41,7 @@ class ProviderConfig:
     base_url: str
     model: str
     timeout_seconds: float = 30.0
+    system_prompt: str = VISION_PROMPT
 
 
 @dataclass(frozen=True)
@@ -216,7 +217,7 @@ class VisionClient:
             cancel_token.raise_if_cancelled()
         if not self.provider.api_key:
             raise RuntimeError(f"{self.provider.name} API Key 不能为空")
-        prompt = _build_user_prompt(user_text, conversation)
+        prompt = _build_user_prompt(user_text, conversation, self.provider.system_prompt)
         images = [prepare_image_for_ai(png_bytes) for png_bytes in png_images]
         payload = self._request_payload(prompt, images)
         headers = {
@@ -327,8 +328,12 @@ class VisionClient:
         return message_content if isinstance(message_content, str) else ""
 
 
-def _build_user_prompt(user_text: str | None, conversation: list[dict[str, str]] | None) -> str:
-    parts = [VISION_PROMPT]
+def _build_user_prompt(
+    user_text: str | None,
+    conversation: list[dict[str, str]] | None,
+    system_prompt: str = VISION_PROMPT,
+) -> str:
+    parts = [system_prompt.strip() or VISION_PROMPT]
     history = _format_conversation(conversation or [])
     if history:
         parts.append(

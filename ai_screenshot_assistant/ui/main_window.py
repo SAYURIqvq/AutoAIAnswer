@@ -8,7 +8,7 @@ import threading
 from typing import Any
 
 from PySide6.QtCore import QObject, QSettings, Qt, QTimer, Signal
-from PySide6.QtGui import QAction, QCloseEvent, QIcon, QPixmap
+from PySide6.QtGui import QAction, QCloseEvent, QIcon, QPixmap, QFont
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
 )
 
 from ai_screenshot_assistant.ai.client import FailoverVisionClient, ProviderConfig
+from ai_screenshot_assistant.ai.prompt import VISION_PROMPT
 from ai_screenshot_assistant.ai.models import DEFAULT_MODEL_TIER, MODEL_ROUTES, normalize_model_tier, route_options
 from ai_screenshot_assistant.backend_api import BackendApi, BackendSession
 from ai_screenshot_assistant.capture.screenshot import ScreenCapture
@@ -91,6 +92,9 @@ class MainWindow(QMainWindow):
         self.model_tier = normalize_model_tier(
             str(self.app_settings.value("providers/model_tier", settings.model_tier) or DEFAULT_MODEL_TIER)
         )
+        self.system_prompt = str(self.app_settings.value("prompt/system", VISION_PROMPT) or VISION_PROMPT)
+        self.ui_font_family = str(self.app_settings.value("appearance/font_family", "Times New Roman") or "Times New Roman")
+        self.ui_theme = str(self.app_settings.value("appearance/theme", "light") or "light")
 
         self.signals = UiSignals()
         self.signals.status.connect(self.set_status)
@@ -141,6 +145,21 @@ class MainWindow(QMainWindow):
         self.save_providers_button = QPushButton("保存模型配置")
         self.save_providers_button.clicked.connect(self.save_provider_settings)
         self.save_status = QLabel("")
+        self.prompt_input = QTextEdit(self.system_prompt)
+        self.prompt_input.setMinimumHeight(180)
+        self.prompt_input.setPlaceholderText("输入系统 Prompt，不限制字数")
+        self.save_prompt_button = QPushButton("保存系统 Prompt")
+        self.save_prompt_button.clicked.connect(self.save_prompt_settings)
+        self.font_combo = QComboBox()
+        for family in ("Times New Roman", "系统默认", "Arial", "Microsoft YaHei"):
+            self.font_combo.addItem(family, family)
+        self.font_combo.setCurrentIndex(max(0, self.font_combo.findData(self.ui_font_family)))
+        self.font_combo.currentIndexChanged.connect(self._apply_appearance_settings)
+        self.theme_combo = QComboBox()
+        self.theme_combo.addItem("黑色", "dark")
+        self.theme_combo.addItem("白色", "light")
+        self.theme_combo.setCurrentIndex(max(0, self.theme_combo.findData(self.ui_theme)))
+        self.theme_combo.currentIndexChanged.connect(self._apply_appearance_settings)
         self.overlay_toggle = QCheckBox("显示桌面流式悬浮答案")
         self.overlay_toggle.toggled.connect(self.set_overlay_visible)
         overlay_visible = self._settings_bool("overlay/visible", True)
@@ -206,6 +225,15 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.provider_label)
         layout.addLayout(provider_form)
         layout.addLayout(save_row)
+        layout.addWidget(QLabel("系统 Prompt（可编辑，不限字数）"))
+        layout.addWidget(self.prompt_input)
+        layout.addWidget(self.save_prompt_button)
+        appearance_row = QHBoxLayout()
+        appearance_row.addWidget(QLabel("字体"))
+        appearance_row.addWidget(self.font_combo)
+        appearance_row.addWidget(QLabel("主题"))
+        appearance_row.addWidget(self.theme_combo)
+        layout.addLayout(appearance_row)
         layout.addWidget(self.overlay_toggle)
         layout.addWidget(self.console_capture_toggle)
         opacity_row = QHBoxLayout()
@@ -244,6 +272,7 @@ class MainWindow(QMainWindow):
         self.signals.mobile_fullscreen_requested.connect(self._capture_current_screen_from_mobile)
         self._setup_tray_icon()
         self._setup_workflow()
+        self._apply_appearance_settings()
         self.overlay_toggle.setChecked(overlay_visible)
         QTimer.singleShot(250, self._apply_console_capture_setting)
         QTimer.singleShot(600, self._maybe_prompt_macos_permissions)
@@ -316,6 +345,7 @@ class MainWindow(QMainWindow):
             base_url=settings.deepseek_base_url,
             model=settings.deepseek_model,
             timeout_seconds=settings.request_timeout_seconds,
+            system_prompt=self.system_prompt,
         )
         openrouter = ProviderConfig(
             name="OpenRouter",
@@ -323,6 +353,7 @@ class MainWindow(QMainWindow):
             base_url=settings.openrouter_base_url,
             model=settings.openrouter_model,
             timeout_seconds=settings.request_timeout_seconds,
+            system_prompt=self.system_prompt,
         )
         doubao = ProviderConfig(
             name="Doubao",
@@ -330,6 +361,7 @@ class MainWindow(QMainWindow):
             base_url=settings.doubao_base_url,
             model=settings.doubao_model,
             timeout_seconds=settings.request_timeout_seconds,
+            system_prompt=self.system_prompt,
         )
         return FailoverVisionClient(
             deepseek,
@@ -339,6 +371,26 @@ class MainWindow(QMainWindow):
             doubao=doubao,
         )
 
+    def save_prompt_settings(self) -> None:
+        self.system_prompt = self.prompt_input.toPlainText()
+        self.app_settings.setValue("prompt/system", self.system_prompt)
+        self.app_settings.sync()
+        if self.workflow is not None:
+            self.workflow.ai_client = self._build_ai_client()
+        self.save_status.setText("系统 Prompt 已保存")
+        self.save_status.setStyleSheet("color: #198754;")
+
+    def _apply_appearance_settings(self) -> None:
+        self.ui_font_family = str(self.font_combo.currentData() or "Times New Roman")
+        self.ui_theme = str(self.theme_combo.currentData() or "light")
+        self.app_settings.setValue("appearance/font_family", self.ui_font_family)
+        self.app_settings.setValue("appearance/theme", self.ui_theme)
+        self.app_settings.sync()
+        self.setFont(QFont(self.ui_font_family, 12))
+        if self.ui_theme == "dark":
+            self.setStyleSheet("QMainWindow, QWidget { background: #202124; color: #f1f3f4; } QLineEdit, QTextEdit, QComboBox { background: #303134; color: #f1f3f4; }")
+        else:
+            self.setStyleSheet("QMainWindow, QWidget { background: #ffffff; color: #202124; }")
     def save_provider_settings(self) -> None:
         deepseek_key = self.deepseek_key_input.text().strip()
         openrouter_key = self.openrouter_key_input.text().strip()
