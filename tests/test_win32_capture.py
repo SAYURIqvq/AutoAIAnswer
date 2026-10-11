@@ -24,8 +24,6 @@ def test_native_console_exclusion_accepts_qt_window(qapp) -> None:
     qapp.processEvents()
     try:
         ok, message = apply_window_capture_exclusion(window, True)
-        if not ok and "1400" in message:
-            pytest.skip("GitHub Windows runner has no desktop capture surface")
         assert ok, message
     finally:
         apply_window_capture_exclusion(window, False)

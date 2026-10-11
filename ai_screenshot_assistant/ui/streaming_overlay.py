@@ -3,7 +3,7 @@ from __future__ import annotations
 import sys
 
 from PySide6.QtCore import QPoint, QSettings, QTimer, Qt
-from PySide6.QtGui import QColor, QMouseEvent, QPalette, QResizeEvent, QShowEvent
+from PySide6.QtGui import QColor, QFont, QMouseEvent, QPalette, QResizeEvent, QShowEvent
 from PySide6.QtWidgets import QApplication, QGraphicsDropShadowEffect, QLabel, QVBoxLayout, QWidget
 
 from ai_screenshot_assistant.ui.native_capture import (
@@ -27,6 +27,8 @@ class StreamingOverlay(QWidget):
         self.app_settings = app_settings
         self._drag_offset: QPoint | None = None
         self._buffer = ""
+        self._text_color = str(app_settings.value("overlay/text_color", "white"))
+        self._font_family = str(app_settings.value("appearance/font_family", "Times New Roman"))
         self._opacity_percent = int(app_settings.value("overlay/opacity_percent", 50) or 50)
         self._font_px = int(app_settings.value("overlay/font_px", 18) or 18)
         self._font_px = max(8, min(22, self._font_px))
@@ -100,10 +102,18 @@ class StreamingOverlay(QWidget):
         self._schedule_native_flags()
 
     def _apply_label_style(self) -> None:
+        self.label.setFont(QFont(self._font_family) if self._font_family != "系统默认" else QApplication.font())
+        color = "#000000" if self._text_color == "black" else "#ffffff"
         self.label.setStyleSheet(
-            f"color: #ffffff; font-size: {self._font_px}px; font-weight: 600;"
+            f"color: {color}; font-size: {self._font_px}px; font-weight: 600;"
             "background: transparent; border: none; padding: 4px;"
         )
+
+    def set_text_appearance(self, family: str, color: str) -> None:
+        self._font_family = family
+        self._text_color = color
+        self._apply_label_style()
+        self.adjustSize()
 
     def start_stream(self) -> None:
         self._buffer = ""
