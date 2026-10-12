@@ -49,5 +49,9 @@ def test_overlay_font_color_survive_size_change_and_restart(qapp, tmp_path):
         assert "#000000" in overlay.label.styleSheet()
         overlay.set_text_appearance("Times New Roman", "white")
         assert "#ffffff" in overlay.label.styleSheet()
+        for color, expected in (("blue", "#0066ff"), ("red", "#ff0000")):
+            overlay.set_text_appearance("Times New Roman", color)
+            overlay.set_font_px(18)
+            assert expected in overlay.label.styleSheet()
     finally:
         overlay.close()

@@ -615,14 +615,6 @@
   function handleEvent(event) {
     const payload = event.payload || {};
     if (event.type === "prompt.current" || event.type === "prompt.saved") {
-      const editor = document.getElementById("system-prompt");
-      if (!editor.dataset.dirty || event.type === "prompt.saved") {
-        editor.value = payload.text || "";
-        delete editor.dataset.dirty;
-      }
-      editor.disabled = false;
-      document.getElementById("save-prompt").disabled = false;
-      document.getElementById("prompt-status").textContent = event.type === "prompt.saved" ? "已保存，下次请求生效" : "";
       return;
     }
     if (event.type === "selection.status") {
@@ -715,7 +707,6 @@
       reconnectMs = 1000;
       setConnectionStatus("电脑已连接", true);
       sendModelTier(currentTier);
-      socket.send(JSON.stringify({type: "command.get_prompt"}));
     };
     socket.onmessage = function (message) {
       const event = JSON.parse(message.data);
@@ -762,20 +753,6 @@
 
   document.getElementById("copy-direct").addEventListener("click", function () {
     copyAnswer(buffer, this);
-  });
-  document.getElementById("system-prompt").addEventListener("input", function () {
-    this.dataset.dirty = "true";
-    document.getElementById("prompt-status").textContent = "未保存";
-  });
-  document.getElementById("save-prompt").addEventListener("click", function () {
-    if (!socket || socket.readyState !== WebSocket.OPEN) {
-      document.getElementById("prompt-status").textContent = "电脑未连接，尚未保存";
-      return;
-    }
-    socket.send(JSON.stringify({type: "command.save_prompt", payload: {
-      text: document.getElementById("system-prompt").value
-    }}));
-    document.getElementById("prompt-status").textContent = "保存中…";
   });
 
   fullscreenButton.addEventListener("click", function () {

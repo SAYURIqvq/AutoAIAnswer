@@ -167,6 +167,8 @@ class MainWindow(QMainWindow):
         self.text_color_combo = QComboBox()
         self.text_color_combo.addItem("白色", "white")
         self.text_color_combo.addItem("黑色", "black")
+        self.text_color_combo.addItem("蓝色", "blue")
+        self.text_color_combo.addItem("红色", "red")
         self.text_color_combo.setCurrentIndex(max(0, self.text_color_combo.findData(self.app_settings.value("overlay/text_color", "white"))))
         self.text_color_combo.currentIndexChanged.connect(self._apply_appearance_settings)
         self.overlay_toggle = QCheckBox("显示桌面流式悬浮答案")
@@ -234,13 +236,10 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.provider_label)
         layout.addLayout(provider_form)
         layout.addLayout(save_row)
-        layout.addWidget(QLabel("系统 Prompt（可编辑，不限字数）"))
-        layout.addWidget(self.prompt_input)
-        layout.addWidget(self.save_prompt_button)
         appearance_row = QHBoxLayout()
         appearance_row.addWidget(QLabel("字体"))
         appearance_row.addWidget(self.font_combo)
-        appearance_row.addWidget(QLabel("主题"))
+        appearance_row.addWidget(QLabel("控制台主题"))
         appearance_row.addWidget(self.theme_combo)
         appearance_row.addWidget(QLabel("字幕文字"))
         appearance_row.addWidget(self.text_color_combo)
@@ -258,7 +257,13 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.region_gesture_toggle)
         layout.addWidget(self.fullscreen_gesture_toggle)
         layout.addWidget(self.fullscreen_button)
-        layout.addWidget(self.mobile_label)
+        mobile_row = QHBoxLayout()
+        mobile_row.addWidget(self.mobile_label, 1)
+        self.copy_mobile_button = QPushButton("复制网址")
+        self.copy_mobile_button.setEnabled(False)
+        self.copy_mobile_button.clicked.connect(self._copy_mobile_url)
+        mobile_row.addWidget(self.copy_mobile_button)
+        layout.addLayout(mobile_row)
         qr_wrap = QWidget()
         qr_wrap.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         qr_layout = QVBoxLayout(qr_wrap)
@@ -270,6 +275,9 @@ class MainWindow(QMainWindow):
         layout.addWidget(gesture_hint)
         layout.addWidget(self.clear_chat_button)
         layout.addWidget(self.logs)
+        layout.addWidget(QLabel("系统 Prompt（可编辑，不限字数）"))
+        layout.addWidget(self.prompt_input)
+        layout.addWidget(self.save_prompt_button)
         layout.setSizeConstraint(QVBoxLayout.SizeConstraint.SetMinimumSize)
 
         content = QWidget()
@@ -391,6 +399,12 @@ class MainWindow(QMainWindow):
             self.workflow.ai_client = self._build_ai_client()
         self.save_status.setText("系统 Prompt 已保存")
         self.save_status.setStyleSheet("color: #198754;")
+
+    def _copy_mobile_url(self) -> None:
+        if self.session is not None:
+            QApplication.clipboard().setText(self.session.pair_url)
+            self.copy_mobile_button.setText("已复制")
+            QTimer.singleShot(1500, lambda: self.copy_mobile_button.setText("复制网址"))
 
     def _apply_appearance_settings(self) -> None:
         self.ui_font_family = str(self.font_combo.currentData() or "Times New Roman")
@@ -530,7 +544,6 @@ class MainWindow(QMainWindow):
         self.region_gesture_enabled = enabled
         self.app_settings.setValue("gestures/region_enabled", enabled)
         self.app_settings.sync()
-        self._log(f"左键框选手势：{'开启' if enabled else '关闭'}")
 
     def set_fullscreen_gesture_enabled(self, enabled: bool) -> None:
         self.fullscreen_gesture_enabled = enabled
@@ -553,6 +566,7 @@ class MainWindow(QMainWindow):
                 self.signals.desktop_command_received.emit,
             )
             self.mobile_label.setText(f"手机端：{self.session.pair_url}")
+            self.copy_mobile_button.setEnabled(True)
             self._set_qr(self.session.pair_url)
             self._log(f"Mobile URL: {self.session.pair_url}")
         except Exception as exc:
@@ -595,14 +609,12 @@ class MainWindow(QMainWindow):
 
     def _left_up(self, x: int, y: int) -> None:
         if not self.region_gesture_enabled:
-            self._log("左键框选手势已关闭")
             return
         if self.workflow is not None:
             self.workflow.left_up(x, y)
 
     def _second_left_up(self, x: int, y: int) -> None:
         if not self.region_gesture_enabled:
-            self._log("左键框选手势已关闭")
             return
         if self.workflow is None or self.mouse_listener is None:
             return

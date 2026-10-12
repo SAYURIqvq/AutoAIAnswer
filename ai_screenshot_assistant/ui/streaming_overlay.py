@@ -103,7 +103,7 @@ class StreamingOverlay(QWidget):
 
     def _apply_label_style(self) -> None:
         self.label.setFont(QFont(self._font_family) if self._font_family != "系统默认" else QApplication.font())
-        color = "#000000" if self._text_color == "black" else "#ffffff"
+        color = {"black": "#000000", "white": "#ffffff", "blue": "#0066ff", "red": "#ff0000"}.get(self._text_color, "#ffffff")
         self.label.setStyleSheet(
             f"color: {color}; font-size: {self._font_px}px; font-weight: 600;"
             "background: transparent; border: none; padding: 4px;"
