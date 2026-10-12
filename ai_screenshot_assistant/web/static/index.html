@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>AI 搜题助手</title>
-    <link rel="stylesheet" href="/static/style.css?v=0.2.51" />
+    <link rel="stylesheet" href="/static/style.css?v=0.2.52" />
   </head>
   <body>
     <main class="shell">
@@ -33,6 +33,14 @@
       </div>
       <button class="capture-button" id="fullscreen-button" type="button" disabled>截全屏</button>
       <div class="output" id="output">等待电脑端发送题目…</div>
+      <button class="clear-chat" id="copy-direct" type="button">复制答案</button>
+      <button class="clear-chat" id="clear-direct" type="button">清空内容</button>
+      <section aria-label="系统 Prompt">
+        <label for="system-prompt">系统 Prompt</label>
+        <textarea id="system-prompt" rows="8" disabled></textarea>
+        <button class="clear-chat" id="save-prompt" type="button" disabled>保存 Prompt</button>
+        <span id="prompt-status" role="status"></span>
+      </section>
       <section class="chatbot" aria-label="截图对话">
         <div class="chat-header">
           <span>截图对话</span>
@@ -70,6 +78,6 @@
       </div>
     </div>
     <script>window.SESSION_ID = "__SESSION_ID__";</script>
-    <script src="/static/app.js?v=0.2.51"></script>
+    <script src="/static/app.js?v=0.2.52"></script>
   </body>
 </html>

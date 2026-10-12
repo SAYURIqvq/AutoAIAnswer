@@ -133,6 +133,9 @@ async def _handle_mobile_message(session: Any, message: str) -> None:
         "command.capture_fullscreen",
         "command.submit_screenshots",
         "command.clear_conversation",
+        "command.clear_direct",
+        "command.get_prompt",
+        "command.save_prompt",
         "command.set_model_tier",
     }:
         return
@@ -146,6 +149,10 @@ async def _handle_mobile_message(session: Any, message: str) -> None:
 def _mobile_command_payload(data: dict[str, Any]) -> dict[str, Any]:
     payload: dict[str, Any] = {"source": "mobile"}
     source_payload = data.get("payload") if isinstance(data.get("payload"), dict) else {}
+    if data.get("type") == "command.save_prompt":
+        if isinstance(source_payload.get("text"), str):
+            payload["text"] = source_payload["text"]
+        return payload
     raw_text = source_payload.get("text") or data.get("text")
     text = str(raw_text or "").strip()
     if text:

@@ -80,6 +80,9 @@ class AssistantWorkflow:
         self._generation_lock = threading.Lock()
         self._generation = 0
         self._active_cancel_token: CancellationToken | None = None
+        self._lane_generations = {}
+        self._lane_tokens = {}
+        self.dispatch_local = None
 
     def start_capture(self) -> None:
         self.roi.start()
@@ -126,7 +129,7 @@ class AssistantWorkflow:
             )
         except Exception as exc:
             if self._is_active(generation):
-                self._fail(str(exc), request_id=request_id)
+                self._fail(str(exc), request_id=request_id, generation=generation)
 
     def process_fullscreen(
         self,
@@ -136,8 +139,9 @@ class AssistantWorkflow:
         use_conversation: bool = False,
         is_chat: bool = False,
         request_id: str | None = None,
+        analysis=None,
     ) -> None:
-        generation, cancel_token = self._begin_analysis()
+        generation, cancel_token = analysis or self._begin_analysis("chat" if is_chat or use_conversation else "direct")
         self.roi.reset()
         self.on_status("Fullscreen captured; analyzing...")
         self._publish_selection_status("capturing", "已截取当前屏幕全屏，正在发送给 AI")
@@ -167,7 +171,7 @@ class AssistantWorkflow:
             )
         except Exception as exc:
             if self._is_active(generation):
-                self._fail(str(exc), request_id=request_id)
+                self._fail(str(exc), request_id=request_id, generation=generation)
 
     def capture_fullscreen_for_mobile(self, x: int | None = None, y: int | None = None) -> None:
         request_id = uuid4().hex
@@ -186,11 +190,12 @@ class AssistantWorkflow:
         use_conversation: bool = False,
         is_chat: bool = False,
         request_id: str | None = None,
+        analysis=None,
     ) -> None:
         if not png_images and not (user_text or "").strip():
             self._fail("请输入文字或至少添加 1 张截图")
             return
-        analysis = self._begin_analysis()
+        analysis = analysis or self._begin_analysis("chat" if is_chat or use_conversation else "direct")
         started_payload: dict[str, Any] = {
             "mode": "mobile_screenshots",
             "image_count": len(png_images),
@@ -212,7 +217,7 @@ class AssistantWorkflow:
         )
 
     def clear_conversation(self) -> dict[str, Any]:
-        self.cancel_active_analysis()
+        self.cancel_active_analysis("chat")
         released_turns = len(self.mobile_conversation)
         self.mobile_conversation = []
         gc.collect()
@@ -324,11 +329,14 @@ class AssistantWorkflow:
             if not self._is_active(generation):
                 return
             text = format_ai_output("".join(chunks))
-            if use_conversation and self._is_active(generation):
-                self._remember_mobile_turn(
-                    user_text.strip() if user_text and user_text.strip() else f"用户发送了 {len(png_images)} 张截图",
-                    text,
-                )
+            if use_conversation:
+                with self._generation_lock:
+                    if generation not in self._lane_generations.values():
+                        return
+                    self._remember_mobile_turn(
+                        user_text.strip() if user_text and user_text.strip() else f"用户发送了 {len(png_images)} 张截图",
+                        text,
+                    )
             result = parse_ai_result(text)
             payload = {
                 "result": {
@@ -349,37 +357,50 @@ class AssistantWorkflow:
             return
         except Exception as exc:
             if self._is_active(generation):
-                self._fail(str(exc), request_id=request_id)
+                self._fail(str(exc), request_id=request_id, generation=generation)
 
-    def cancel_active_analysis(self) -> None:
+    def cancel_active_analysis(self, lane=None) -> None:
         with self._generation_lock:
-            self._generation += 1
-            token = self._active_cancel_token
-            self._active_cancel_token = None
-        if token is not None:
+            lanes = [lane] if lane else list(self._lane_tokens)
+            tokens = [self._lane_tokens.pop(key) for key in lanes if key in self._lane_tokens]
+            for key in lanes:
+                self._lane_generations.pop(key, None)
+        for token in tokens:
             token.cancel()
 
-    def _begin_analysis(self) -> tuple[int, CancellationToken]:
+    def _begin_analysis(self, lane="direct") -> tuple[int, CancellationToken]:
         token = CancellationToken()
         with self._generation_lock:
             self._generation += 1
-            previous_token = self._active_cancel_token
+            previous_token = self._lane_tokens.get(lane)
             self._active_cancel_token = token
             generation = self._generation
+            self._lane_tokens[lane] = token
+            self._lane_generations[lane] = generation
         if previous_token is not None:
             previous_token.cancel()
         return generation, token
 
     def _is_active(self, generation: int) -> bool:
         with self._generation_lock:
-            return generation == self._generation
+            return generation in self._lane_generations.values()
 
     def _run_if_active(self, generation: int, callback) -> bool:
         with self._generation_lock:
-            if generation != self._generation:
+            if generation not in self._lane_generations.values():
                 return False
-            callback()
+            if generation == self._lane_generations.get("chat"):
+                return True
+            if self.dispatch_local is not None:
+                self.dispatch_local(lambda: self._deliver_local(generation, callback))
+            else:
+                callback()
             return True
+
+    def _deliver_local(self, generation, callback):
+        with self._generation_lock:
+            if generation in self._lane_generations.values():
+                callback()
 
     def _apply_local_result(self, text: str, result: dict[str, Any]) -> None:
         self.on_stream_completed(text)
@@ -402,11 +423,14 @@ class AssistantWorkflow:
             except Exception as exc:
                 self.on_status(f"Mobile update failed: {exc}")
 
-    def _fail(self, message: str, request_id: str | None = None) -> None:
+    def _fail(self, message: str, request_id: str | None = None, generation=None) -> None:
         request_id = request_id or uuid4().hex
         self._publish("answer.error", request_id, {"message": message})
         self._publish_selection_status("error", "分析失败，可以重新框选或全屏截题")
-        self.on_stream_error(message)
+        if generation is not None:
+            self._run_if_active(generation, lambda: self.on_stream_error(message))
+        else:
+            self.on_stream_error(message)
         self.on_error(message)
 
     def _publish_selection_status(self, state: str, message: str) -> None:

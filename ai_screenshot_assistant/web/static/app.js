@@ -336,6 +336,7 @@
   }
 
   function renderFormattedText(container, text) {
+    container.answerText = String(text || "");
     const value = capText(text);
     container.textContent = "";
     const codePattern = /```([a-zA-Z0-9_+-]*)\s*\n?([\s\S]*?)```/g;
@@ -393,10 +394,7 @@
     activeChatRequestId = null;
     activeAssistantBubble = null;
     activeAssistantText = "";
-    activeDirectRequestId = null;
     latestChatRequestId = null;
-    latestDirectRequestId = null;
-    buffer = "";
     albumItems = [];
     hideAlbumLongPressSheet();
     renderPreviewList();
@@ -405,7 +403,6 @@
     empty.className = "empty-chat";
     empty.textContent = "可以只截图不输入文字；多张截图会和可选文字一起发送给 AI。";
     chatList.appendChild(empty);
-    setOutput("等待电脑端发送题目…");
     updateAskButton();
   }
 
@@ -519,6 +516,17 @@
     }
     const content = document.createElement("div");
     content.className = "chat-content";
+    if (role === "assistant") {
+      const actions = document.createElement("div");
+      actions.className = "answer-actions";
+      const copy = document.createElement("button");
+      copy.type = "button";
+      copy.className = "clear-chat copy-answer";
+      copy.textContent = "复制答案";
+      copy.addEventListener("click", function () { copyAnswer(content.answerText, copy); });
+      actions.appendChild(copy);
+      bubble.appendChild(actions);
+    }
     renderFormattedText(content, text);
     bubble.appendChild(content);
     item.appendChild(bubble);
@@ -606,26 +614,36 @@
 
   function handleEvent(event) {
     const payload = event.payload || {};
+    if (event.type === "prompt.current" || event.type === "prompt.saved") {
+      const editor = document.getElementById("system-prompt");
+      if (!editor.dataset.dirty || event.type === "prompt.saved") {
+        editor.value = payload.text || "";
+        delete editor.dataset.dirty;
+      }
+      editor.disabled = false;
+      document.getElementById("save-prompt").disabled = false;
+      document.getElementById("prompt-status").textContent = event.type === "prompt.saved" ? "已保存，下次请求生效" : "";
+      return;
+    }
     if (event.type === "selection.status") {
       setSelectionStatus(payload.state, payload.message);
     } else if (event.type === "answer.started") {
       if (isOutdatedAnswerEvent(event)) {
         return;
       }
-      buffer = "";
       setSelectionStatus("analyzing", "AI 正在分析，请稍候");
       if (payload.chat) {
         startAssistantMessage(event.request_id);
-        setOutput("聊天请求分析中…");
       } else {
+        buffer = "";
         setOutput("分析中…");
       }
     } else if (event.type === "answer.delta") {
       if (isOutdatedAnswerEvent(event)) {
         return;
       }
-      buffer += payload.delta || "";
       if (!appendAssistantDelta(event.request_id, payload.delta || "")) {
+        buffer += payload.delta || "";
         setOutput(buffer || "分析中…");
       }
     } else if (event.type === "answer.completed") {
@@ -633,8 +651,8 @@
         return;
       }
       const result = payload.result || {};
-      buffer = result.text || buffer || "分析完成";
-      if (!completeAssistantMessage(event.request_id, buffer)) {
+      if (!completeAssistantMessage(event.request_id, result.text || activeAssistantText || "分析完成")) {
+        buffer = result.text || buffer || "分析完成";
         setOutput(buffer);
       }
       if (event.request_id === activeDirectRequestId) {
@@ -658,9 +676,12 @@
       if (isOutdatedAnswerEvent(event)) {
         return;
       }
-      buffer = "";
-      failAssistantMessage(payload.message);
-      setOutput(`错误：${payload.message || "模型调用失败"}`);
+      if (String(event.request_id).startsWith("chat-")) {
+        failAssistantMessage(payload.message);
+      } else {
+        buffer = "";
+        setOutput(`错误：${payload.message || "模型调用失败"}`);
+      }
       if (event.request_id === activeDirectRequestId) {
         activeDirectRequestId = null;
       }
@@ -694,6 +715,7 @@
       reconnectMs = 1000;
       setConnectionStatus("电脑已连接", true);
       sendModelTier(currentTier);
+      socket.send(JSON.stringify({type: "command.get_prompt"}));
     };
     socket.onmessage = function (message) {
       const event = JSON.parse(message.data);
@@ -711,26 +733,74 @@
     };
   }
 
+  async function copyAnswer(text, button) {
+    if (!text) return;
+    let copied = false;
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        copied = true;
+      }
+    } catch (_) { /* Fall back for local HTTP and denied clipboard access. */ }
+    if (!copied) {
+      const previous = document.activeElement;
+      const field = document.createElement("textarea");
+      field.value = text;
+      field.readOnly = true;
+      field.style.cssText = "position:fixed;left:0;top:0;opacity:0;pointer-events:none";
+      document.body.appendChild(field);
+      field.focus();
+      field.select();
+      field.setSelectionRange(0, text.length);
+      try { copied = document.execCommand("copy"); } catch (_) { copied = false; }
+      field.remove();
+      if (previous) previous.focus({preventScroll: true});
+    }
+    button.textContent = copied ? "已复制" : "复制失败";
+    setTimeout(function () { button.textContent = "复制答案"; }, 1500);
+  }
+
+  document.getElementById("copy-direct").addEventListener("click", function () {
+    copyAnswer(buffer, this);
+  });
+  document.getElementById("system-prompt").addEventListener("input", function () {
+    this.dataset.dirty = "true";
+    document.getElementById("prompt-status").textContent = "未保存";
+  });
+  document.getElementById("save-prompt").addEventListener("click", function () {
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      document.getElementById("prompt-status").textContent = "电脑未连接，尚未保存";
+      return;
+    }
+    socket.send(JSON.stringify({type: "command.save_prompt", payload: {
+      text: document.getElementById("system-prompt").value
+    }}));
+    document.getElementById("prompt-status").textContent = "保存中…";
+  });
+
   fullscreenButton.addEventListener("click", function () {
     if (!socket || socket.readyState !== WebSocket.OPEN) {
       return;
     }
     activeDirectRequestId = nextRequestId("fullscreen");
     latestDirectRequestId = activeDirectRequestId;
-    stopActiveAssistantMessage();
     buffer = "";
     setOutput("分析中…");
-    fullscreenButton.disabled = true;
     setSelectionStatus("capturing", "已请求电脑截取全屏");
     socket.send(JSON.stringify({
       type: "command.fullscreen",
       payload: { client_request_id: activeDirectRequestId }
     }));
-    setTimeout(function () {
-      if (socket && socket.readyState === WebSocket.OPEN) {
-        fullscreenButton.disabled = false;
-      }
-    }, 1500);
+  });
+
+  document.getElementById("clear-direct").addEventListener("click", function () {
+    latestDirectRequestId = nextRequestId("cleared");
+    activeDirectRequestId = null;
+    buffer = "";
+    setOutput("等待电脑端发送题目…");
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({type: "command.clear_direct"}));
+    }
   });
 
   chatCaptureButton.addEventListener("click", function () {
@@ -801,15 +871,11 @@
     const images = chatImages.map(function (screenshot) { return screenshot.image; });
     const requestId = nextRequestId("chat");
     stopActiveAssistantMessage();
-    activeDirectRequestId = null;
-    latestDirectRequestId = null;
     latestChatRequestId = requestId;
     activeChatRequestId = requestId;
     activeAssistantBubble = null;
     activeAssistantText = "";
     appendMessage("user", text || "请根据截图作答", images.length);
-    fullscreenButton.disabled = true;
-    chatCaptureButton.disabled = true;
     askButton.disabled = true;
     setSelectionStatus("analyzing", images.length ? `正在发送 ${images.length} 张截图给 AI` : "正在发送追问给 AI");
     socket.send(JSON.stringify({
@@ -827,8 +893,6 @@
     renderPreviewList();
     setTimeout(function () {
       if (socket && socket.readyState === WebSocket.OPEN) {
-        fullscreenButton.disabled = false;
-        chatCaptureButton.disabled = false;
         updateAskButton();
       }
     }, 1500);

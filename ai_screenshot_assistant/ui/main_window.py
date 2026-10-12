@@ -51,6 +51,7 @@ from ai_screenshot_assistant.websocket_client import DesktopWebSocketPublisher
 gAppName = str("QQMusic")
 
 class UiSignals(QObject):
+    local_update = Signal(object)
     status = Signal(str)
     result = Signal(dict)
     error = Signal(str)
@@ -97,6 +98,7 @@ class MainWindow(QMainWindow):
         self.ui_theme = str(self.app_settings.value("appearance/theme", "light") or "light")
 
         self.signals = UiSignals()
+        self.signals.local_update.connect(lambda callback: callback())
         self.signals.status.connect(self.set_status)
         self.signals.result.connect(self.show_result)
         self.signals.error.connect(self.show_error)
@@ -381,7 +383,8 @@ class MainWindow(QMainWindow):
         )
 
     def save_prompt_settings(self) -> None:
-        self.system_prompt = self.prompt_input.toPlainText()
+        self.system_prompt = self.prompt_input.toPlainText() or VISION_PROMPT
+        self.prompt_input.setPlainText(self.system_prompt)
         self.app_settings.setValue("prompt/system", self.system_prompt)
         self.app_settings.sync()
         if self.workflow is not None:
@@ -566,11 +569,12 @@ class MainWindow(QMainWindow):
             publisher=self.publisher,
         )
         self.workflow.on_status = self.signals.status.emit
-        self.workflow.on_result = self.signals.result.emit
+        self.workflow.on_result = self.show_result
         self.workflow.on_error = self.signals.error.emit
-        self.workflow.on_stream_started = self.signals.stream_started.emit
-        self.workflow.on_stream_delta = self.signals.stream_delta.emit
-        self.workflow.on_stream_completed = self.signals.stream_completed.emit
+        self.workflow.on_stream_started = self._on_stream_started
+        self.workflow.dispatch_local = self.signals.local_update.emit
+        self.workflow.on_stream_delta = self.overlay.append_delta
+        self.workflow.on_stream_completed = self.overlay.complete_stream
         self.workflow.on_stream_error = self.signals.stream_error.emit
         self.workflow.on_capture_finished = self._on_capture_finished
         self._refresh_provider_label(ai_client.current_provider)
@@ -633,9 +637,11 @@ class MainWindow(QMainWindow):
         self.mouse_listener.set_enabled(False)
         threading.Thread(
             target=self._run_fullscreen,
-            args=(x, y, user_text, use_conversation, is_chat, request_id),
+            args=(x, y, user_text, use_conversation, is_chat, request_id, self.workflow._begin_analysis("chat" if is_chat or use_conversation else "direct")),
             daemon=True,
         ).start()
+        if not (is_chat or use_conversation):
+            self.overlay.start_stream()
 
     def _capture_current_screen(self) -> None:
         center = self.frameGeometry().center()
@@ -694,11 +700,22 @@ class MainWindow(QMainWindow):
         self.mouse_listener.set_enabled(False)
         threading.Thread(
             target=self._run_mobile_screenshots,
-            args=(png_images, user_text or None, use_conversation, is_chat, request_id),
+            args=(png_images, user_text or None, use_conversation, is_chat, request_id, self.workflow._begin_analysis("chat" if is_chat or use_conversation else "direct")),
             daemon=True,
         ).start()
 
     def _handle_desktop_command(self, command: dict[str, Any]) -> None:
+        if command.get("type") in {"command.get_prompt", "command.save_prompt"}:
+            saving = command["type"] == "command.save_prompt"
+            payload = command.get("payload") or {}
+            if saving:
+                if not isinstance(payload.get("text"), str):
+                    return
+                self.prompt_input.setPlainText(payload["text"])
+                self.save_prompt_settings()
+            if self.workflow is not None:
+                self.workflow._publish("prompt.saved" if saving else "prompt.current", "prompt", {"text": self.system_prompt})
+            return
         if command.get("type") == "command.fullscreen":
             payload = command.get("payload")
             self.signals.mobile_fullscreen_requested.emit(payload if isinstance(payload, dict) else {})
@@ -709,6 +726,10 @@ class MainWindow(QMainWindow):
             self._submit_mobile_screenshots(payload if isinstance(payload, dict) else {})
         elif command.get("type") == "command.clear_conversation":
             self.signals.clear_conversation_requested.emit()
+        elif command.get("type") == "command.clear_direct":
+            if self.workflow is not None:
+                self.workflow.cancel_active_analysis("direct")
+            self.overlay.clear()
         elif command.get("type") == "command.set_model_tier":
             payload = command.get("payload")
             tier = ""
@@ -768,6 +789,7 @@ class MainWindow(QMainWindow):
         use_conversation: bool = False,
         is_chat: bool = False,
         request_id: str | None = None,
+        analysis=None,
     ) -> None:
         try:
             if self.workflow is not None:
@@ -778,6 +800,7 @@ class MainWindow(QMainWindow):
                     use_conversation=use_conversation,
                     is_chat=is_chat,
                     request_id=request_id,
+                    analysis=analysis,
                 )
         finally:
             if self.mouse_listener is not None:
@@ -798,6 +821,7 @@ class MainWindow(QMainWindow):
         use_conversation: bool = False,
         is_chat: bool = False,
         request_id: str | None = None,
+        analysis=None,
     ) -> None:
         try:
             if self.workflow is not None:
@@ -807,6 +831,7 @@ class MainWindow(QMainWindow):
                     use_conversation=use_conversation,
                     is_chat=is_chat,
                     request_id=request_id,
+                    analysis=analysis,
                 )
         finally:
             if self.mouse_listener is not None:
@@ -887,8 +912,6 @@ class MainWindow(QMainWindow):
     def _clear_conversation(self) -> None:
         if self.workflow is not None:
             self.workflow.clear_conversation()
-        self.overlay.clear()
-        self.logs.clear()
         gc.collect()
         self._log("已清空对话记录并释放内存")
 

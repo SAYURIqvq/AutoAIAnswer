@@ -6,6 +6,12 @@ from PySide6.QtWidgets import QLabel, QTextEdit
 from ai_screenshot_assistant.ai.client import _build_user_prompt
 from ai_screenshot_assistant.ui.main_window import MainWindow
 from ai_screenshot_assistant.ui.streaming_overlay import StreamingOverlay
+from ai_screenshot_assistant.backend.app import _mobile_command_payload
+
+
+def test_mobile_prompt_preserves_long_text_and_whitespace():
+    text = "  <rules>\n" + "代码先行\n" * 6000
+    assert _mobile_command_payload({"type": "command.save_prompt", "payload": {"text": text}})["text"] == text
 
 
 def test_long_plain_prompt_survives_save_reload_and_all_providers(qapp, tmp_path):
