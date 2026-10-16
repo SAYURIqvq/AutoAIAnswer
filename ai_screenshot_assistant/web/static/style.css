@@ -84,7 +84,10 @@ h1 { margin: 0; font-size: 20px; }
 }
 
 .voice-mode { display: flex; align-items: center; gap: 8px; min-height: 36px; color: var(--text); font-size: 14px; }
+.voice-mode label { display: flex; align-items: center; gap: 8px; }
 .voice-mode input { width: 18px; height: 18px; accent-color: var(--accent); }
+.voice-mode button { padding: 5px 12px; border: 1px solid var(--accent); border-radius: 8px; background: transparent; color: var(--text); }
+.voice-mode #voice-status { font-size: 12px; }
 
 .selection-status {
   display: flex;
