@@ -73,6 +73,9 @@ async def desktop_ws(websocket: WebSocket, session_id: str) -> None:
     try:
         while True:
             event = await websocket.receive_json()
+            if event.get("type") == "voice.mode":
+                payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+                session.auto_read = payload.get("enabled") is True
             saved = manager.append_event(session, event)
             if event.get("type") == "screenshot.captured" and isinstance(event.get("payload"), dict):
                 if event["payload"].get("add_to_buffer") is True and event["payload"].get("image"):
@@ -144,6 +147,10 @@ async def _handle_mobile_message(session: Any, message: str) -> None:
         await _send_mobile(session, manager.append_event(session, _system_event(
             session.session_id, "voice.mode", {"enabled": session.auto_read}
         )))
+        if session.desktop_commands is not None:
+            await session.desktop_commands.send_json(_system_event(
+                session.session_id, "command.set_auto_read", {"enabled": session.auto_read}
+            ))
         return
     if command_type == "command.clear_conversation":
         session.pending_screenshots.clear()

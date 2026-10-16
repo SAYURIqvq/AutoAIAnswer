@@ -174,6 +174,9 @@ class MainWindow(QMainWindow):
         self.text_color_combo.currentIndexChanged.connect(self._apply_appearance_settings)
         self.overlay_toggle = QCheckBox("显示桌面流式悬浮答案")
         self.overlay_toggle.toggled.connect(self.set_overlay_visible)
+        self.auto_read_toggle = QCheckBox("手机自动朗读答案")
+        self.auto_read_toggle.setChecked(self._settings_bool("voice/auto_read", False))
+        self.auto_read_toggle.toggled.connect(self._set_auto_read)
         overlay_visible = self._settings_bool("overlay/visible", True)
         self.console_capture_toggle = QCheckBox("共享屏幕时隐藏控制台")
         self.console_capture_toggle.setChecked(
@@ -246,6 +249,7 @@ class MainWindow(QMainWindow):
         appearance_row.addWidget(self.text_color_combo)
         layout.addLayout(appearance_row)
         layout.addWidget(self.overlay_toggle)
+        layout.addWidget(self.auto_read_toggle)
         layout.addWidget(self.console_capture_toggle)
         opacity_row = QHBoxLayout()
         opacity_row.addWidget(self.opacity_label)
@@ -594,6 +598,7 @@ class MainWindow(QMainWindow):
         self.workflow.on_capture_finished = self._on_capture_finished
         self._refresh_provider_label(ai_client.current_provider)
         self._publish_model_changed()
+        self._publish_auto_read_mode()
         if ai_client.current_provider == "none":
             self.save_status.setText("请至少填写一把 API Key 后保存")
             self.save_status.setStyleSheet("color: #d33;")
@@ -718,6 +723,15 @@ class MainWindow(QMainWindow):
         ).start()
 
     def _handle_desktop_command(self, command: dict[str, Any]) -> None:
+        if command.get("type") == "command.set_auto_read":
+            payload = command.get("payload")
+            enabled = isinstance(payload, dict) and payload.get("enabled") is True
+            self.auto_read_toggle.blockSignals(True)
+            self.auto_read_toggle.setChecked(enabled)
+            self.auto_read_toggle.blockSignals(False)
+            self.app_settings.setValue("voice/auto_read", enabled)
+            self.app_settings.sync()
+            return
         if command.get("type") in {"command.get_prompt", "command.save_prompt"}:
             saving = command["type"] == "command.save_prompt"
             payload = command.get("payload") or {}
@@ -897,6 +911,24 @@ class MainWindow(QMainWindow):
                 self.model_tier_combo.setCurrentIndex(index)
             self.model_tier_combo.blockSignals(False)
         self._refresh_provider_label()
+
+    def _set_auto_read(self, enabled: bool) -> None:
+        self.app_settings.setValue("voice/auto_read", enabled)
+        self.app_settings.sync()
+        self._publish_auto_read_mode()
+
+    def _publish_auto_read_mode(self) -> None:
+        if self.publisher is None or self.session is None:
+            return
+        event = Event(
+            type="voice.mode",
+            session_id=self.session.session_id,
+            payload={"enabled": self.auto_read_toggle.isChecked()},
+        )
+        try:
+            self.publisher.send_sync(event.to_dict())
+        except Exception as exc:
+            self._log(f"Auto-read update failed: {exc}")
 
     def _publish_model_changed(self) -> None:
         if self.workflow is None:
