@@ -64,5 +64,5 @@ def test_phone_and_desktop_have_identical_model_options():
             if tag == 'option':
                 self.values.append(dict(attrs)['value'])
     parser = Options()
-    parser.feed((Path(__file__).resolve().parents[1] / 'ai_screenshot_assistant/web/static/index.html').read_text())
+    parser.feed((Path(__file__).resolve().parents[1] / 'ai_screenshot_assistant/web/static/index.html').read_text(encoding='utf-8'))
     assert set(parser.values) == set(MODEL_ROUTES)
