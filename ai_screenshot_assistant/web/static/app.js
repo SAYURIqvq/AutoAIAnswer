@@ -21,9 +21,12 @@
   const outputEl = document.getElementById("output");
   const modelHint = document.getElementById("model-hint");
   const modelRoute = document.getElementById("model-route");
+  const autoReadInput = document.getElementById("auto-read");
   const cursorKey = `lastEventId:${sessionId || "missing"}`;
   const modelTierKey = `modelTier:${sessionId || "missing"}`;
-  let lastEventId = Number(localStorage.getItem(cursorKey) || 0);
+  let lastEventId = 0;
+  let autoRead = false;
+  let lastSpokenRequestId = "";
   let reconnectMs = 1000;
   let buffer = "";
   let socket = null;
@@ -363,6 +366,20 @@
     renderFormattedText(outputEl, text || "");
   }
 
+  function stopReading() {
+    if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+  }
+
+  function readAnswer(text, requestId) {
+    if (!autoRead || !text || !("speechSynthesis" in window) || requestId === lastSpokenRequestId) return;
+    stopReading();
+    lastSpokenRequestId = requestId;
+    const plain = String(text).replace(/```[\s\S]*?```/g, "").replace(/[#*`_]/g, "").slice(0, 12000);
+    const utterance = new SpeechSynthesisUtterance(plain);
+    utterance.lang = "zh-CN";
+    window.speechSynthesis.speak(utterance);
+  }
+
   function trimChatMessages() {
     const messages = chatList.querySelectorAll(".chat-message");
     const extra = messages.length - maxChatMessages;
@@ -619,11 +636,45 @@
     }
     if (event.type === "selection.status") {
       setSelectionStatus(payload.state, payload.message);
+    } else if (event.type === "mobile.action") {
+      if (payload.command === "command.fullscreen") {
+        latestDirectRequestId = event.request_id;
+        activeDirectRequestId = event.request_id;
+        buffer = "";
+        setOutput("分析中…");
+        setSelectionStatus("capturing", "已请求电脑截取全屏");
+        stopReading();
+      } else if (payload.command === "command.submit_screenshots") {
+        albumItems = albumItems.filter(function (item) { return !item.forChat; });
+        renderPreviewList();
+        updateAskButton();
+        stopActiveAssistantMessage();
+        latestChatRequestId = event.request_id;
+        activeChatRequestId = event.request_id;
+        activeAssistantBubble = null;
+        activeAssistantText = "";
+        appendMessage("user", payload.text || "请根据截图作答", payload.image_count || 0);
+        setSelectionStatus("analyzing", "正在发送给 AI");
+        stopReading();
+      } else if (payload.command === "command.capture_fullscreen") {
+        setSelectionStatus("capturing", "已请求电脑截全屏并添加到对话缓冲区");
+      } else if (payload.command === "command.clear_direct") {
+        latestDirectRequestId = nextRequestId("cleared");
+        activeDirectRequestId = null;
+        buffer = "";
+        setOutput("等待电脑端发送题目…");
+        stopReading();
+      }
+    } else if (event.type === "voice.mode") {
+      autoRead = payload.enabled === true;
+      if (autoReadInput) autoReadInput.checked = autoRead;
+      if (!autoRead) stopReading();
     } else if (event.type === "answer.started") {
       if (isOutdatedAnswerEvent(event)) {
         return;
       }
       setSelectionStatus("analyzing", "AI 正在分析，请稍候");
+      stopReading();
       if (payload.chat) {
         startAssistantMessage(event.request_id);
       } else {
@@ -643,6 +694,7 @@
         return;
       }
       const result = payload.result || {};
+      readAnswer(result.text || buffer || activeAssistantText || "分析完成", String(event.request_id || ""));
       if (!completeAssistantMessage(event.request_id, result.text || activeAssistantText || "分析完成")) {
         buffer = result.text || buffer || "分析完成";
         setOutput(buffer);
@@ -665,6 +717,7 @@
         }
       }
     } else if (event.type === "answer.error") {
+      stopReading();
       if (isOutdatedAnswerEvent(event)) {
         return;
       }
@@ -706,7 +759,6 @@
     socket.onopen = function () {
       reconnectMs = 1000;
       setConnectionStatus("电脑已连接", true);
-      sendModelTier(currentTier);
     };
     socket.onmessage = function (message) {
       const event = JSON.parse(message.data);
@@ -760,6 +812,7 @@
       return;
     }
     activeDirectRequestId = nextRequestId("fullscreen");
+    stopReading();
     latestDirectRequestId = activeDirectRequestId;
     buffer = "";
     setOutput("分析中…");
@@ -847,12 +900,12 @@
     }
     const images = chatImages.map(function (screenshot) { return screenshot.image; });
     const requestId = nextRequestId("chat");
+    stopReading();
     stopActiveAssistantMessage();
     latestChatRequestId = requestId;
     activeChatRequestId = requestId;
     activeAssistantBubble = null;
     activeAssistantText = "";
-    appendMessage("user", text || "请根据截图作答", images.length);
     askButton.disabled = true;
     setSelectionStatus("analyzing", images.length ? `正在发送 ${images.length} 张截图给 AI` : "正在发送追问给 AI");
     socket.send(JSON.stringify({
@@ -876,6 +929,13 @@
   });
 
   renderPreviewList();
+  if (autoReadInput) autoReadInput.addEventListener("change", function () {
+    autoRead = autoReadInput.checked;
+    if (!autoRead) stopReading();
+    if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({
+      type: "command.set_auto_read", payload: { enabled: autoRead }
+    }));
+  });
   setActiveTier(currentTier, false);
   connect();
 })();

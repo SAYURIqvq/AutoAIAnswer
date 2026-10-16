@@ -83,6 +83,9 @@ h1 { margin: 0; font-size: 20px; }
   font-size: 12px;
 }
 
+.voice-mode { display: flex; align-items: center; gap: 8px; min-height: 36px; color: var(--text); font-size: 14px; }
+.voice-mode input { width: 18px; height: 18px; accent-color: var(--accent); }
+
 .selection-status {
   display: flex;
   align-items: center;

@@ -22,13 +22,15 @@ class Session:
     ttl_minutes: int = 60
     desktop: WebSocket | None = None
     desktop_commands: WebSocket | None = None
-    mobile: WebSocket | None = None
+    mobiles: set[WebSocket] = field(default_factory=set)
+    auto_read: bool = False
+    pending_screenshots: list[dict[str, Any]] = field(default_factory=list)
     events: list[dict[str, Any]] = field(default_factory=list)
     next_event_id: int = 1
 
     @property
     def paired(self) -> bool:
-        return self.mobile is not None
+        return bool(self.mobiles)
 
 
 def persistable_event(event: dict[str, Any]) -> dict[str, Any] | None:

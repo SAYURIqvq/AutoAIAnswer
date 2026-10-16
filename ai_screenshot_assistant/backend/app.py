@@ -74,6 +74,10 @@ async def desktop_ws(websocket: WebSocket, session_id: str) -> None:
         while True:
             event = await websocket.receive_json()
             saved = manager.append_event(session, event)
+            if event.get("type") == "screenshot.captured" and isinstance(event.get("payload"), dict):
+                if event["payload"].get("add_to_buffer") is True and event["payload"].get("image"):
+                    session.pending_screenshots.append(saved)
+                    session.pending_screenshots = session.pending_screenshots[-5:]
             await _send_mobile(session, saved)
     except WebSocketDisconnect:
         if session.desktop is websocket:
@@ -104,22 +108,28 @@ async def mobile_ws(websocket: WebSocket, session_id: str, last_event_id: int = 
         await websocket.close(code=4404)
         return
     await websocket.accept()
-    session.mobile = websocket
+    session.mobiles.add(websocket)
     for event in manager.since(session, last_event_id):
         await websocket.send_json(event)
+    if last_event_id <= 0:
+        for event in session.pending_screenshots:
+            await websocket.send_json(event)
+    await websocket.send_json(_system_event(session_id, "voice.mode", {"enabled": session.auto_read}))
     await websocket.send_json(_system_event(session_id, "device.connected", {"device": "mobile"}))
     try:
         while True:
             message = await websocket.receive_text()
             await _handle_mobile_message(session, message)
     except WebSocketDisconnect:
-        if session.mobile is websocket:
-            session.mobile = None
+        session.mobiles.discard(websocket)
 
 
 async def _send_mobile(session: Any, event: dict[str, Any]) -> None:
-    if session.mobile is not None:
-        await session.mobile.send_json(event)
+    for mobile in tuple(session.mobiles):
+        try:
+            await mobile.send_json(event)
+        except (RuntimeError, WebSocketDisconnect):
+            session.mobiles.discard(mobile)
 
 
 async def _handle_mobile_message(session: Any, message: str) -> None:
@@ -128,6 +138,15 @@ async def _handle_mobile_message(session: Any, message: str) -> None:
     except json.JSONDecodeError:
         return
     command_type = data.get("type")
+    if command_type == "command.set_auto_read":
+        payload = data.get("payload") if isinstance(data.get("payload"), dict) else {}
+        session.auto_read = payload.get("enabled") is True
+        await _send_mobile(session, manager.append_event(session, _system_event(
+            session.session_id, "voice.mode", {"enabled": session.auto_read}
+        )))
+        return
+    if command_type == "command.clear_conversation":
+        session.pending_screenshots.clear()
     if command_type not in {
         "command.fullscreen",
         "command.capture_fullscreen",
@@ -141,6 +160,16 @@ async def _handle_mobile_message(session: Any, message: str) -> None:
         return
     if session.desktop_commands is not None:
         payload = _mobile_command_payload(data)
+        if command_type in {"command.fullscreen", "command.submit_screenshots", "command.capture_fullscreen", "command.clear_direct"}:
+            await _send_mobile(session, manager.append_event(session, _system_event(
+                session.session_id, "mobile.action", {
+                    "command": command_type,
+                    "text": payload.get("text", ""),
+                    "image_count": len(payload.get("images", [])),
+                }, request_id=str(payload.get("client_request_id") or "system")
+            )))
+            if command_type == "command.submit_screenshots":
+                session.pending_screenshots.clear()
         await session.desktop_commands.send_json(
             _system_event(session.session_id, command_type, payload)
         )
@@ -176,11 +205,11 @@ def _mobile_command_payload(data: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
-def _system_event(session_id: str, event_type: str, payload: dict[str, Any]) -> dict[str, Any]:
+def _system_event(session_id: str, event_type: str, payload: dict[str, Any], request_id: str = "system") -> dict[str, Any]:
     return {
         "type": event_type,
         "session_id": session_id,
-        "request_id": "system",
+        "request_id": request_id,
         "timestamp": utc_now_iso(),
         "payload": payload,
     }
