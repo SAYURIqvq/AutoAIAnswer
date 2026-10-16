@@ -14,6 +14,8 @@ ROUTE_DOUBAO_SEED_VISION = ROUTE_DOUBAO_TURBO
 ROUTE_OPENROUTER_QWEN_235B = "openrouter-qwen-235b"
 ROUTE_OPENROUTER_QWEN_32B = "openrouter-qwen-32b"
 ROUTE_OPENROUTER_QWEN_8B = "openrouter-qwen-8b"
+ROUTE_OPENROUTER_QWEN_122B = "openrouter-qwen-122b"
+ROUTE_OPENROUTER_QWEN_30B_THINKING = "openrouter-qwen-30b-thinking"
 ROUTE_OPENROUTER_DEEPSEEK_FLASH = "openrouter-deepseek-flash"
 ROUTE_DEEPSEEK_FLASH = "deepseek-flash"
 DEFAULT_MODEL_TIER = ROUTE_OPENROUTER_QWEN_235B
@@ -25,9 +27,11 @@ DOUBAO_TURBO_MODEL = "doubao-seed-2-1-turbo-260628"
 DOUBAO_PRO_MODEL = "doubao-seed-2-1-pro-260915"
 DOUBAO_VISION_MODEL = DOUBAO_TURBO_MODEL
 DOUBAO_CHAT_COMPLETIONS_MODELS = frozenset({DOUBAO_TURBO_MODEL})
-OPENROUTER_QWEN_235B = "qwen/qwen3-vl-235b-a22b-thinking"
-OPENROUTER_QWEN_32B = "qwen/qwen3-vl-32b-instruct"
+OPENROUTER_QWEN_235B = "qwen/qwen3-vl-235b-a22b-instruct"
+OPENROUTER_QWEN_32B = "qwen/qwen3-vl-30b-a3b-instruct"
 OPENROUTER_QWEN_8B = "qwen/qwen3-vl-8b-instruct"
+OPENROUTER_QWEN_122B = "qwen/qwen3.5-122b-a10b"
+OPENROUTER_QWEN_30B_THINKING = "qwen/qwen3-vl-30b-a3b-thinking"
 OPENROUTER_DEEPSEEK_FLASH = "deepseek/deepseek-v4.1-flash"
 
 OPENROUTER_TIER_MODELS = {
@@ -86,7 +90,7 @@ MODEL_ROUTES: dict[str, ModelRoute] = {
         "OpenRouter",
         "openrouter",
         OPENROUTER_QWEN_235B,
-        "最准 / 较慢 / 会思考",
+        "高精度 / 较慢",
     ),
     ROUTE_OPENROUTER_QWEN_32B: ModelRoute(
         ROUTE_OPENROUTER_QWEN_32B,
@@ -101,6 +105,14 @@ MODEL_ROUTES: dict[str, ModelRoute] = {
         "openrouter",
         OPENROUTER_QWEN_8B,
         "最快 / 准确一般",
+    ),
+    ROUTE_OPENROUTER_QWEN_122B: ModelRoute(
+        ROUTE_OPENROUTER_QWEN_122B, "OpenRouter", "openrouter",
+        OPENROUTER_QWEN_122B, "新模型 / 图文理解",
+    ),
+    ROUTE_OPENROUTER_QWEN_30B_THINKING: ModelRoute(
+        ROUTE_OPENROUTER_QWEN_30B_THINKING, "OpenRouter", "openrouter",
+        OPENROUTER_QWEN_30B_THINKING, "会思考 / 图文理解",
     ),
     ROUTE_OPENROUTER_DEEPSEEK_FLASH: ModelRoute(
         ROUTE_OPENROUTER_DEEPSEEK_FLASH,
@@ -151,6 +163,10 @@ ROUTE_ALIASES = {
     "简单": ROUTE_DEEPSEEK_FLASH,
     ROUTE_DEEPSEEK_FLASH: ROUTE_DEEPSEEK_FLASH,
     ROUTE_OPENROUTER_QWEN_8B: ROUTE_OPENROUTER_QWEN_8B,
+    ROUTE_OPENROUTER_QWEN_122B: ROUTE_OPENROUTER_QWEN_122B,
+    ROUTE_OPENROUTER_QWEN_30B_THINKING: ROUTE_OPENROUTER_QWEN_30B_THINKING,
+    "qwen/qwen3-vl-235b-a22b-thinking": ROUTE_OPENROUTER_QWEN_235B,
+    "qwen/qwen3-vl-32b-instruct": ROUTE_OPENROUTER_QWEN_32B,
     ROUTE_OPENROUTER_DEEPSEEK_FLASH: ROUTE_OPENROUTER_DEEPSEEK_FLASH,
     OPENROUTER_DEEPSEEK_FLASH: ROUTE_OPENROUTER_DEEPSEEK_FLASH,
     "deepseek/deepseek-v4.1-flash": ROUTE_OPENROUTER_DEEPSEEK_FLASH,
@@ -165,6 +181,8 @@ TIER_LABELS = {
     ROUTE_OPENROUTER_QWEN_235B: "OpenRouter",
     ROUTE_OPENROUTER_QWEN_32B: "OpenRouter",
     ROUTE_OPENROUTER_QWEN_8B: "OpenRouter",
+    ROUTE_OPENROUTER_QWEN_122B: "OpenRouter",
+    ROUTE_OPENROUTER_QWEN_30B_THINKING: "OpenRouter",
     ROUTE_OPENROUTER_DEEPSEEK_FLASH: "OpenRouter DeepSeek",
     ROUTE_DEEPSEEK_FLASH: "DeepSeek 官方",
     TIER_GOOD: "OpenRouter",

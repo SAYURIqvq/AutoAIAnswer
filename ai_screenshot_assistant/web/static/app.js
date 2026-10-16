@@ -65,6 +65,8 @@
     "doubao-seed-2-1-turbo-260628": "doubao-seed-2-1-turbo",
     "doubao-seed-2-1-pro-260915": "doubao-seed-2-1-pro",
     "deepseek/deepseek-v4.1-flash": "openrouter-deepseek-flash",
+    "qwen/qwen3-vl-235b-a22b-thinking": "openrouter-qwen-235b",
+    "qwen/qwen3-vl-32b-instruct": "openrouter-qwen-32b",
     "openrouter-deepseek": "openrouter-deepseek-flash"
   };
   const knownRoutes = {
@@ -72,9 +74,11 @@
     "doubao-seed-2-0-lite": "豆包 Lite / doubao-seed-2-0-lite-260428（较快 / 准确中等）",
     "doubao-seed-2-1-turbo": "豆包 Turbo / doubao-seed-2-1-turbo-260628（快 / 准确较好）",
     "doubao-seed-2-1-pro": "豆包 Pro / doubao-seed-2-1-pro-260915（最准 / 较慢）",
-    "openrouter-qwen-235b": "OpenRouter / qwen/qwen3-vl-235b-a22b-thinking（最准 / 较慢 / 会思考）",
-    "openrouter-qwen-32b": "OpenRouter / qwen/qwen3-vl-32b-instruct（较快 / 准确较好）",
+    "openrouter-qwen-235b": "OpenRouter / qwen/qwen3-vl-235b-a22b-instruct（高精度 / 较慢）",
+    "openrouter-qwen-32b": "OpenRouter / qwen/qwen3-vl-30b-a3b-instruct（较快 / 准确较好）",
     "openrouter-qwen-8b": "OpenRouter / qwen/qwen3-vl-8b-instruct（最快 / 准确一般）",
+    "openrouter-qwen-122b": "OpenRouter / qwen/qwen3.5-122b-a10b（新模型 / 图文理解）",
+    "openrouter-qwen-30b-thinking": "OpenRouter / qwen/qwen3-vl-30b-a3b-thinking（会思考 / 图文理解）",
     "openrouter-deepseek-flash": "OpenRouter DeepSeek / deepseek/deepseek-v4.1-flash（快 / 准确较好）",
     "deepseek-flash": "DeepSeek 官方 / deepseek-flash（快 / 准确一般）"
   };

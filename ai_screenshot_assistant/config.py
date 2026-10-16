@@ -41,7 +41,7 @@ class Settings:
     deepseek_model: str = os.getenv("DEEPSEEK_MODEL", "deepseek-flash")
     openrouter_api_key: str = os.getenv("OPENROUTER_API_KEY", "")
     openrouter_base_url: str = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
-    openrouter_model: str = os.getenv("OPENROUTER_MODEL", "qwen/qwen3-vl-235b-a22b-thinking")
+    openrouter_model: str = os.getenv("OPENROUTER_MODEL", "qwen/qwen3-vl-235b-a22b-instruct")
     doubao_api_key: str = os.getenv("ARK_API_KEY", "")
     doubao_base_url: str = os.getenv("ARK_BASE_URL", "https://ark.cn-beijing.volces.com/api/v3")
     doubao_model: str = os.getenv("ARK_MODEL", "doubao-seed-1-6-vision-250815")
