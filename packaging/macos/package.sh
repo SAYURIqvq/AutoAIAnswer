@@ -36,6 +36,8 @@ codesign --force --deep --sign - dist/QQMusic.app
 mkdir -p dist/dmg
 rm -rf dist/dmg/QQMusic.app
 cp -R dist/QQMusic.app dist/dmg/
+ln -sfn /Applications dist/dmg/Applications
+cp RELEASE-v0.2.54.md dist/dmg/更新说明.md
 rm -f dist/QQMusic-macOS.dmg
 hdiutil create -volname QQMusic -srcfolder dist/dmg -ov -format UDZO dist/QQMusic-macOS.dmg
 echo "Built: dist/QQMusic.app and dist/QQMusic-macOS.dmg"

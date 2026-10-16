@@ -9,7 +9,7 @@ from uuid import uuid4
 from fastapi import WebSocket
 
 MAX_SESSION_EVENTS = 80
-MAX_STORED_TEXT_CHARS = 4000
+MAX_STORED_TEXT_CHARS = 120000
 SKIP_PERSIST_EVENT_TYPES = frozenset({"answer.delta"})
 
 
@@ -24,6 +24,8 @@ class Session:
     desktop_commands: WebSocket | None = None
     mobiles: set[WebSocket] = field(default_factory=set)
     auto_read: bool = False
+    current_model: dict[str, Any] | None = None
+    active_streams: dict[str, dict[str, Any]] = field(default_factory=dict)
     pending_screenshots: list[dict[str, Any]] = field(default_factory=list)
     events: list[dict[str, Any]] = field(default_factory=list)
     next_event_id: int = 1
@@ -97,6 +99,32 @@ class SessionManager:
         enriched = dict(event)
         enriched["event_id"] = session.next_event_id
         session.next_event_id += 1
+        event_type = enriched.get("type")
+        request_id = str(enriched.get("request_id", ""))
+        payload = enriched.get("payload") or {}
+        if event_type == "model.changed":
+            session.current_model = enriched
+        if event_type == "answer.started":
+            lane = "chat" if payload.get("chat") else "direct"
+            session.active_streams[lane] = {
+                "type": "answer.snapshot", "request_id": request_id,
+                "payload": {"chat": lane == "chat", "text": ""},
+            }
+        elif event_type == "answer.delta":
+            for snapshot in session.active_streams.values():
+                if snapshot["request_id"] == request_id:
+                    snapshot["payload"]["text"] = (
+                        snapshot["payload"]["text"] + str(payload.get("delta", ""))
+                    )[-MAX_STORED_TEXT_CHARS:]
+        elif event_type in {"answer.completed", "answer.error"}:
+            session.active_streams = {
+                lane: snapshot for lane, snapshot in session.active_streams.items()
+                if snapshot["request_id"] != request_id
+            }
+        elif event_type == "conversation.cleared":
+            session.active_streams.pop("chat", None)
+        elif event_type == "mobile.action" and payload.get("command") == "command.clear_direct":
+            session.active_streams.pop("direct", None)
         stored = persistable_event(enriched)
         if stored is not None:
             session.events.append(stored)
@@ -109,6 +137,7 @@ class SessionManager:
 
     def clear_events(self, session: Session) -> None:
         session.events.clear()
+        session.active_streams.clear()
 
 
 manager = SessionManager()

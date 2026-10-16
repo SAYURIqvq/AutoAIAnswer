@@ -6,7 +6,7 @@ from ai_screenshot_assistant.ai.client import (
     AI_IMAGE_MAX_SIDE,
     ALBUM_IMAGE_MAX_SIDE,
     CancellationToken,
-    OpenRouterVisionClient,
+    QwenVisionClient,
     ProviderConfig,
     _prepare_image_for_ai,
     _prepare_image_for_album,
@@ -63,31 +63,31 @@ def test_parse_answer_first_text() -> None:
 def test_extract_stream_delta() -> None:
     data = '{"choices":[{"delta":{"content":"hello"}}]}'
 
-    assert OpenRouterVisionClient._extract_delta(data) == "hello"
+    assert QwenVisionClient._extract_delta(data) == "hello"
 
 
 def test_extract_stream_delta_ignores_reasoning() -> None:
     data = '{"choices":[{"delta":{"reasoning_content":"先看图"}}]}'
 
-    assert OpenRouterVisionClient._extract_delta(data) == ""
+    assert QwenVisionClient._extract_delta(data) == ""
 
 
 def test_extract_stream_delta_prefers_content_over_reasoning() -> None:
     data = '{"choices":[{"delta":{"content":"答案：B","reasoning_content":"思考过程"}}]}'
 
-    assert OpenRouterVisionClient._extract_delta(data) == "答案：B"
+    assert QwenVisionClient._extract_delta(data) == "答案：B"
 
 
 def test_extract_responses_api_ignores_reasoning_delta() -> None:
     data = '{"type":"response.reasoning_text.delta","delta":"慢慢想"}'
 
-    assert OpenRouterVisionClient._extract_delta(data) == ""
+    assert QwenVisionClient._extract_delta(data) == ""
 
 
 def test_extract_responses_api_text_delta() -> None:
     data = '{"type":"response.output_text.delta","delta":"看见了题目"}'
 
-    assert OpenRouterVisionClient._extract_delta(data) == "看见了题目"
+    assert QwenVisionClient._extract_delta(data) == "看见了题目"
 
 
 def test_doubao_uses_ark_responses_api(monkeypatch) -> None:
@@ -110,11 +110,11 @@ def test_doubao_uses_ark_responses_api(monkeypatch) -> None:
     def fake_post(url, **kwargs):
         captured["url"] = url
         captured["json"] = kwargs["json"]
-        captured["verify"] = kwargs["verify"]
+        captured["verify"] = kwargs.get("verify", True)
         return Response()
 
     monkeypatch.setattr("ai_screenshot_assistant.ai.client.requests.post", fake_post)
-    client = OpenRouterVisionClient(
+    client = QwenVisionClient(
         ProviderConfig(
             name="Doubao",
             api_key="key",
@@ -127,7 +127,7 @@ def test_doubao_uses_ark_responses_api(monkeypatch) -> None:
     assert captured["url"] == "https://ark.cn-beijing.volces.com/api/v3/responses"
     assert captured["json"]["model"] == "doubao-seed-1-6-vision-250815"
     assert captured["json"]["stream"] is True
-    assert captured["verify"] is False
+    assert captured["verify"] is True
     assert captured["json"]["thinking"] == {"type": "disabled"}
     content = captured["json"]["input"][0]["content"]
     assert content[0]["type"] == "input_image"
@@ -159,7 +159,7 @@ def test_doubao_turbo_uses_chat_completions(monkeypatch) -> None:
         return Response()
 
     monkeypatch.setattr("ai_screenshot_assistant.ai.client.requests.post", fake_post)
-    client = OpenRouterVisionClient(
+    client = QwenVisionClient(
         ProviderConfig(
             name="Doubao",
             api_key="key",
@@ -206,7 +206,7 @@ def test_doubao_mini_lite_and_pro_use_responses_api(monkeypatch) -> None:
         "doubao-seed-2-1-pro-260915",
     ):
         captured.clear()
-        client = OpenRouterVisionClient(
+        client = QwenVisionClient(
             ProviderConfig(
                 name="Doubao",
                 api_key="key",
@@ -242,7 +242,7 @@ def test_parse_questions_json() -> None:
     assert result.reason == "第1题：TCP\n第2题：UDP"
 
 
-def test_openrouter_request_disables_reasoning_and_uses_low_latency_stream(monkeypatch) -> None:
+def test_qwen_request_uses_provider_defaults_and_low_latency_stream(monkeypatch) -> None:
     captured = {}
 
     class Response:
@@ -267,19 +267,19 @@ def test_openrouter_request_disables_reasoning_and_uses_low_latency_stream(monke
         return Response()
 
     monkeypatch.setattr("ai_screenshot_assistant.ai.client.requests.post", fake_post)
-    client = OpenRouterVisionClient(
+    client = QwenVisionClient(
         ProviderConfig(
-            name="OpenRouter",
+            name="Qwen",
             api_key="key",
-            base_url="https://openrouter.ai/api/v1",
-            model="qwen/qwen3.8-flash",
+            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            model="qwen3.5-flash",
         )
     )
 
     assert list(client.analyze_image_stream(b"png")) == ["A"]
     assert captured["stream"] is True
     assert captured["json"]["stream"] is True
-    assert captured["json"]["reasoning_effort"] == "none"
+    assert "reasoning_effort" not in captured["json"]
     assert "先写思考过程" in captured["json"]["messages"][0]["content"][-1]["text"]
     assert captured["iter_lines_kwargs"] == {"chunk_size": 1, "decode_unicode": False}
 
@@ -306,21 +306,21 @@ def test_thinking_model_keeps_reasoning_enabled(monkeypatch) -> None:
         return Response()
 
     monkeypatch.setattr("ai_screenshot_assistant.ai.client.requests.post", fake_post)
-    client = OpenRouterVisionClient(
+    client = QwenVisionClient(
         ProviderConfig(
-            name="OpenRouter",
+            name="Qwen",
             api_key="key",
-            base_url="https://openrouter.ai/api/v1",
-            model="qwen/qwen3-vl-235b-a22b-thinking",
+            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            model="qwen3-vl-plus",
         )
     )
 
     assert list(client.analyze_image_stream(b"png")) == ["A"]
     assert "reasoning_effort" not in captured["json"]
-    assert captured["json"]["model"] == "qwen/qwen3-vl-235b-a22b-thinking"
+    assert captured["json"]["model"] == "qwen3-vl-plus"
 
 
-def test_openrouter_deepseek_flash_disables_reasoning(monkeypatch) -> None:
+def test_qwen_122b_request_uses_direct_model_id(monkeypatch) -> None:
     captured = {}
 
     class Response:
@@ -343,19 +343,19 @@ def test_openrouter_deepseek_flash_disables_reasoning(monkeypatch) -> None:
         return Response()
 
     monkeypatch.setattr("ai_screenshot_assistant.ai.client.requests.post", fake_post)
-    client = OpenRouterVisionClient(
+    client = QwenVisionClient(
         ProviderConfig(
-            name="OpenRouter",
+            name="Qwen",
             api_key="key",
-            base_url="https://openrouter.ai/api/v1",
-            model="deepseek/deepseek-v4.1-flash",
+            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            model="qwen3.5-122b-a10b",
         )
     )
 
     assert list(client.analyze_image_stream(b"png")) == ["B"]
     assert captured["url"].endswith("/chat/completions")
-    assert captured["json"]["model"] == "deepseek/deepseek-v4.1-flash"
-    assert captured["json"]["reasoning_effort"] == "none"
+    assert captured["json"]["model"] == "qwen3.5-122b-a10b"
+    assert "reasoning_effort" not in captured["json"]
 
 
 def test_large_images_are_resized_and_compressed_for_ai() -> None:

@@ -45,10 +45,11 @@ def test_mobile_page_exposes_model_routes_and_clear_chat() -> None:
     assert 'value="doubao-seed-2-0-lite"' in html
     assert 'value="doubao-seed-2-1-turbo"' in html
     assert 'value="doubao-seed-2-1-pro"' in html
-    assert 'value="openrouter-qwen-235b"' in html
-    assert 'value="openrouter-qwen-32b"' in html
-    assert 'value="openrouter-qwen-8b"' in html
-    assert 'value="openrouter-deepseek-flash"' in html
+    assert 'value="qwen-vl-plus"' in html
+    assert 'value="qwen-vl-flash"' in html
+    assert 'value="qwen-122b"' in html
+    assert 'value="qwen-plus"' in html
+    assert 'value="qwen-flash"' in html
     assert 'value="deepseek-flash"' in html
     assert "清空聊天" in html
     assert "保存到相册" in html

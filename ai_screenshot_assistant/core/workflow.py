@@ -69,6 +69,8 @@ class AssistantWorkflow:
         self.settings = app_settings
         self.roi = RoiStateMachine()
         self.on_status = lambda message: None
+        self.on_answer_started = lambda: None
+        self.on_answer_completed = lambda text: None
         self.on_result = lambda result: None
         self.on_error = lambda message: None
         self.on_stream_started = lambda: None
@@ -350,6 +352,7 @@ class AssistantWorkflow:
             if not self._is_active(generation):
                 return
             self._publish("answer.completed", request_id, payload)
+            self._run_if_active(generation, lambda: self.on_answer_completed(text), include_chat=True)
             if not self._run_if_active(generation, lambda: self._apply_local_result(text, payload["result"])):
                 return
             self._publish_selection_status("completed", "答案已生成，可以继续框选或全屏截题")
@@ -379,23 +382,26 @@ class AssistantWorkflow:
             self._lane_generations[lane] = generation
         if previous_token is not None:
             previous_token.cancel()
+        self._run_if_active(generation, self.on_answer_started, include_chat=True)
         return generation, token
 
     def _is_active(self, generation: int) -> bool:
         with self._generation_lock:
             return generation in self._lane_generations.values()
 
-    def _run_if_active(self, generation: int, callback) -> bool:
+    def _run_if_active(self, generation: int, callback, *, include_chat: bool = False) -> bool:
         with self._generation_lock:
             if generation not in self._lane_generations.values():
                 return False
-            if generation == self._lane_generations.get("chat"):
+            if not include_chat and generation == self._lane_generations.get("chat"):
                 return True
-            if self.dispatch_local is not None:
-                self.dispatch_local(lambda: self._deliver_local(generation, callback))
-            else:
-                callback()
-            return True
+        # Qt may deliver synchronously when the request starts on the UI thread.
+        # Do not hold the generation lock while dispatching back into _deliver_local.
+        if self.dispatch_local is not None:
+            self.dispatch_local(lambda: self._deliver_local(generation, callback))
+        else:
+            self._deliver_local(generation, callback)
+        return True
 
     def _deliver_local(self, generation, callback):
         with self._generation_lock:

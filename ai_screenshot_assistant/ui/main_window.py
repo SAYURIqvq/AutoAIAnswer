@@ -564,7 +564,6 @@ class MainWindow(QMainWindow):
             self.mouse_listener.set_enabled(True)
 
     def _on_stream_started(self) -> None:
-        self.desktop_speech.stop()
         # Overlay visibility is owned only by 「显示桌面流式悬浮答案」.
         # Streaming must not show/raise it, or the main console comes forward too.
         self.overlay.start_stream()
@@ -612,6 +611,8 @@ class MainWindow(QMainWindow):
             publisher=self.publisher,
         )
         self.workflow.on_status = self.signals.status.emit
+        self.workflow.on_answer_started = self.desktop_speech.stop
+        self.workflow.on_answer_completed = self._read_desktop_answer
         self.workflow.on_result = self.show_result
         self.workflow.on_error = self.signals.error.emit
         self.workflow.on_stream_started = self._on_stream_started
@@ -894,8 +895,10 @@ class MainWindow(QMainWindow):
 
     def show_result(self, result: dict[str, Any]) -> None:
         self._log("AI result completed")
+
+    def _read_desktop_answer(self, text: str) -> None:
         if self.desktop_read_toggle.isChecked():
-            answer = str(result.get("text") or result.get("answer") or "").strip()
+            answer = text.strip()
             if answer:
                 self.desktop_speech.stop()
                 self.desktop_speech.say(answer[:12000])

@@ -16,6 +16,9 @@ ROUTE_QWEN_VL_FLASH = "qwen-vl-flash"
 ROUTE_QWEN_122B = "qwen-122b"
 ROUTE_QWEN_PLUS = "qwen-plus"
 ROUTE_QWEN_FLASH = "qwen-flash"
+ROUTE_QWEN_397B = "qwen-397b"
+ROUTE_QWEN_27B = "qwen-27b"
+ROUTE_QWEN_35B = "qwen-35b"
 ROUTE_DEEPSEEK_FLASH = "deepseek-flash"
 DEFAULT_MODEL_TIER = ROUTE_QWEN_VL_PLUS
 
@@ -98,6 +101,15 @@ MODEL_ROUTES: dict[str, ModelRoute] = {
     ROUTE_QWEN_FLASH: ModelRoute(
         ROUTE_QWEN_FLASH, "通义千问", "qwen", QWEN_FLASH_MODEL, "快速 / 图文理解",
     ),
+    ROUTE_QWEN_397B: ModelRoute(
+        ROUTE_QWEN_397B, "通义千问", "qwen", "qwen3.5-397b-a17b", "397B / 图文理解",
+    ),
+    ROUTE_QWEN_27B: ModelRoute(
+        ROUTE_QWEN_27B, "通义千问", "qwen", "qwen3.5-27b", "27B / 图文理解",
+    ),
+    ROUTE_QWEN_35B: ModelRoute(
+        ROUTE_QWEN_35B, "通义千问", "qwen", "qwen3.5-35b-a3b", "35B / 图文理解",
+    ),
     ROUTE_DEEPSEEK_FLASH: ModelRoute(
         ROUTE_DEEPSEEK_FLASH,
         "DeepSeek 官方",
@@ -147,12 +159,12 @@ ROUTE_ALIASES = {
     "openrouter-qwen-8b": ROUTE_QWEN_VL_FLASH,
     "openrouter-qwen-122b": ROUTE_QWEN_122B,
     "openrouter-qwen-30b-thinking": ROUTE_QWEN_VL_PLUS,
-    "openrouter-deepseek-flash": ROUTE_DEEPSEEK_FLASH,
-    "openrouter-deepseek": ROUTE_DEEPSEEK_FLASH,
+    "openrouter-deepseek-flash": ROUTE_QWEN_FLASH,
+    "openrouter-deepseek": ROUTE_QWEN_FLASH,
     "qwen/qwen3-vl-235b-a22b-thinking": ROUTE_QWEN_VL_PLUS,
     "qwen/qwen3-vl-32b-instruct": ROUTE_QWEN_VL_FLASH,
     "qwen/qwen3.5-122b-a10b": ROUTE_QWEN_122B,
-    "deepseek/deepseek-v4.1-flash": ROUTE_DEEPSEEK_FLASH,
+    "deepseek/deepseek-v4.1-flash": ROUTE_QWEN_FLASH,
 }
 
 TIER_LABELS = {

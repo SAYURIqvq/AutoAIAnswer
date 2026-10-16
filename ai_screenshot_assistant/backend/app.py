@@ -114,9 +114,13 @@ async def mobile_ws(websocket: WebSocket, session_id: str, last_event_id: int = 
     session.mobiles.add(websocket)
     for event in manager.since(session, last_event_id):
         await websocket.send_json(event)
-    if last_event_id <= 0:
-        for event in session.pending_screenshots:
-            await websocket.send_json(event)
+    if session.current_model is not None:
+        await websocket.send_json(session.current_model)
+    for snapshot in session.active_streams.values():
+        await websocket.send_json(snapshot)
+    await websocket.send_json(_system_event(session_id, "screenshot.buffer", {
+        "screenshots": [event["payload"] for event in session.pending_screenshots]
+    }))
     await websocket.send_json(_system_event(session_id, "voice.mode", {"enabled": session.auto_read}))
     await websocket.send_json(_system_event(session_id, "device.connected", {"device": "mobile"}))
     try:

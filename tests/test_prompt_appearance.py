@@ -21,7 +21,7 @@ def test_long_plain_prompt_survives_save_reload_and_all_providers(qapp, tmp_path
     editor.setPlainText(prompt)
     target = SimpleNamespace(
         prompt_input=editor, app_settings=store, workflow=None,
-        save_status=QLabel(), deepseek_key="", openrouter_key="", doubao_key="",
+        save_status=QLabel(), deepseek_key="", qwen_key="", qwen_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1", doubao_key="",
         model_tier="doubao-seed-2-1-pro",
         signals=SimpleNamespace(provider_changed=SimpleNamespace(emit=lambda _: None)),
     )
@@ -29,7 +29,7 @@ def test_long_plain_prompt_survives_save_reload_and_all_providers(qapp, tmp_path
     reloaded = QSettings(str(tmp_path / "settings.ini"), QSettings.IniFormat)
     assert reloaded.value("prompt/system") == prompt
     client = MainWindow._build_ai_client(target)
-    for provider in (client.deepseek, client.openrouter, client.doubao):
+    for provider in (client.deepseek, client.qwen, client.doubao):
         assert provider.provider.system_prompt == prompt
     built = _build_user_prompt("请用 Java", [], prompt)
     assert built.startswith(prompt.strip())

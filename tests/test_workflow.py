@@ -455,7 +455,7 @@ def test_set_model_tier_publishes_choice() -> None:
         def apply_model_tier(self, tier, notify=True):
             from ai_screenshot_assistant.ai.models import resolve_model_choice
 
-            return resolve_model_choice(tier, has_deepseek=True, has_openrouter=True)
+            return resolve_model_choice(tier, has_deepseek=True, has_qwen=True)
 
     publisher = FakePublisher()
     workflow = AssistantWorkflow(
@@ -468,11 +468,11 @@ def test_set_model_tier_publishes_choice() -> None:
 
     payload = workflow.set_model_tier("中等")
 
-    assert payload["tier"] == "openrouter-qwen-32b"
-    assert payload["route"] == "openrouter-qwen-32b"
-    assert payload["model"] == "qwen/qwen3-vl-32b-instruct"
+    assert payload["tier"] == "qwen-vl-flash"
+    assert payload["route"] == "qwen-vl-flash"
+    assert payload["model"] == "qwen3-vl-flash"
     assert publisher.events[-1]["type"] == "model.changed"
-    assert "OpenRouter" in publisher.events[-1]["payload"]["display_name"]
+    assert "通义千问" in publisher.events[-1]["payload"]["display_name"]
 
 
 def test_overlapping_analysis_replaces_previous_output() -> None:

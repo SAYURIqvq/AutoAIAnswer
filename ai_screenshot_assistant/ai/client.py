@@ -222,8 +222,6 @@ class VisionClient:
         headers = {
             "Authorization": f"Bearer {self.provider.api_key}",
             "Content-Type": "application/json",
-            "HTTP-Referer": "http://localhost",
-            "X-Title": "AI Screenshot Assistant",
         }
         with requests.post(
             f"{self.provider.base_url.rstrip('/')}{'/responses' if self.uses_responses_api() else '/chat/completions'}",

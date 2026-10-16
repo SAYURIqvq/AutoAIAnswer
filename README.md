@@ -2,29 +2,26 @@
 
 Windows / macOS 截图搜题助手。通过全局鼠标手势框选屏幕题目，调用视觉模型分析，并把答案实时流式发送到同一局域网内的手机浏览器；也可选择在桌面显示轻量透明悬浮答案。
 
-## 平台代码（已分开）
+## 平台代码
 
-| 平台 | GitHub 分支 | 独立工程目录 | 捕获排除方式 |
-|---|---|---|---|
-| Windows | [`win`](https://github.com/SAYURIqvq/AutoAIAnswer/tree/win) | [`windows/`](windows/) | `WDA_EXCLUDEFROMCAPTURE` |
-| macOS | [`mac`](https://github.com/SAYURIqvq/AutoAIAnswer/tree/mac) | [`macos/`](macos/) | `NSWindow.sharingType = .none` |
+正式版本由 `main` 分支的同一套主工程分别构建 Windows 和 macOS 包，朗读、多手机同步、模型选项保持一致。平台差异由截图与鼠标监听模块处理。
 
-Mac 上打包只需要 `macos/` 目录：拷到 Mac 后执行 `./build.sh`。Windows 打包只需要 `windows/` 目录：执行 `build.bat`。
+根目录的 `build_windows_exe.bat` 和 `build_macos.sh` 是完整程序的打包入口。`windows/`、`macos/` 是历史字幕悬浮窗演示工程，不是完整截图搜题程序。
 
 ## 直接下载
 
-[下载 Windows 版 AutoAIAnswer-Windows.zip](https://github.com/SAYURIqvq/AutoAIAnswer/releases/latest/download/AutoAIAnswer-Windows.zip)
+[下载 Windows 版 QQMusic-Windows.zip](https://github.com/SAYURIqvq/AutoAIAnswer/releases/latest/download/QQMusic-Windows.zip)
 
-[下载 macOS 版 AutoAIAnswer-macOS.dmg](https://github.com/SAYURIqvq/AutoAIAnswer/releases/latest/download/AutoAIAnswer-macOS.dmg)
+[下载 macOS 版 QQMusic-macOS.dmg](https://github.com/SAYURIqvq/AutoAIAnswer/releases/latest/download/QQMusic-macOS.dmg)
 
 无需安装 Python，下载对应系统版本后直接运行，并在软件界面中填写自己的百炼、DeepSeek 或豆包 API Key。公开发行版不包含作者的 API Key。
 
 ### 在 GitHub 页面中找到下载文件
 
 1. 在仓库首页右侧找到 **Releases**。
-2. 点击最新版本 **AutoAIAnswer v0.2.5**。
+2. 点击最新版本（本次为 **v0.2.54**）。
 3. 进入发布页面后展开 **Assets**。
-4. Windows 点击 **AutoAIAnswer-Windows.zip**；macOS 点击 **AutoAIAnswer-macOS.dmg**。
+4. Windows 点击 **QQMusic-Windows.zip**；macOS 点击 **QQMusic-macOS.dmg**。
 
 如果没有看到右侧栏，也可以直接点击上方的“下载 Windows 单文件版”链接，或打开 [Releases 页面](https://github.com/SAYURIqvq/AutoAIAnswer/releases/latest)。
 
@@ -78,9 +75,19 @@ Mac 上打包只需要 `macos/` 目录：拷到 Mac 后执行 `./build.sh`。Win
 
 Windows 首次运行可能询问防火墙权限，请允许程序访问“专用网络”，否则手机可能无法连接电脑的 8000 端口。
 
+### 电脑端与手机端朗读
+
+控制台提供独立的「电脑端发声」和「手机端发声」勾选项，可以单独或同时开启。生成答案后自动朗读；开始新题会停止上一题朗读，截图对话也支持。电脑声音由系统语音引擎播放，手机声音由浏览器播放。
+
+每部手机首次打开页面后，点击「试听」激活并检查声音；浏览器需要用户触摸后才能播放语音。手机端发声的开关会同步到控制台及其他手机，手机音量和浏览器播放权限由各设备控制。
+
+### 多手机共享
+
+多部手机扫描同一个电脑会话的二维码，即可共享截题状态、流式答案、截图对话、模型选择和手机朗读开关。一部手机发起截题，其他手机实时接收；重新连接会恢复正在生成的文字和待发送截图。关闭一部手机不影响其他手机连接。历史显示有长度上限，手机浏览器需保持页面活跃。
+
 ### macOS 首次运行
 
-1. 打开 DMG，将 `AutoAIAnswer.app` 拖入“应用程序”。
+1. 退出旧程序，打开 DMG，将 `QQMusic.app` 放到 `/Applications/QQMusic.app`，从该位置打开。不要直接从 DMG 或旧 dist 目录运行。
 2. 由于当前版本未使用 Apple Developer ID 签名，首次打开请在 Finder 中右键应用并选择“打开”。
 3. 根据系统提示，在“系统设置 → 隐私与安全性”中允许 **辅助功能**（监听框选手势）和 **屏幕录制**（截取题目区域）。
 4. 授权后若手势或截图仍不可用，请完全退出应用后重新打开。
@@ -90,6 +97,8 @@ Windows 首次运行可能询问防火墙权限，请允许程序访问“专用
 - 手机和桌面都可以选择具体路线和模型：百炼 `qwen3-vl-plus` / `qwen3-vl-flash` / `qwen3.5-122b-a10b` 等、豆包与 DeepSeek。
 - 没填对应 Key 的路线会显示「未配置 Key」，不会发请求。旧版 OpenRouter 路线选择会映射到对应的百炼路线。
 - 认证失败、额度不足、限流、超时、网络错误和服务端错误不会自动切换平台。
+- 千问提供 8 个图文模型：`qwen3-vl-plus`、`qwen3-vl-flash`、`qwen3.5-plus`、`qwen3.5-flash`、`qwen3.5-397b-a17b`、`qwen3.5-122b-a10b`、`qwen3.5-27b`、`qwen3.5-35b-a3b`。
+- 北京地域使用 `https://dashscope.aliyuncs.com/compatible-mode/v1`。模型可用性与账户开通情况、Key 地域有关，参考[百炼视觉模型文档](https://help.aliyun.com/zh/model-studio/vision-model)。
 
 ## 从源码运行
 
@@ -135,6 +144,7 @@ MODEL_TIER=qwen-vl-plus
 
 ```powershell
 python -m pytest tests -q
+node --test tests/mobile_browser.test.cjs
 ```
 
 ## 构建单文件 EXE / macOS 应用
@@ -145,7 +155,7 @@ Windows:
 build_windows_exe.bat
 ```
 
-生成文件为 `dist\AutoAIAnswer.exe`。
+生成文件为 `dist\QQMusic.exe`。
 
 macOS:
 
@@ -154,11 +164,11 @@ chmod +x build_macos.sh
 ./build_macos.sh
 ```
 
-生成 `dist/AutoAIAnswer.app` 和 `dist/AutoAIAnswer-macOS.dmg`。GitHub Actions 会在打 `v*` 标签时构建并挂到 Release。公开构建不会嵌入本地 `.env` 或任何 API Key；用户首次启动后在界面中填写并保存自己的 Key。仓库已忽略 `dist/`、`build/`、`.env` 和 `*.spec`。
+生成 `dist/QQMusic.app` 和 `dist/QQMusic-macOS.dmg`。GitHub Actions 会在打 `v*` 标签时构建并挂到 Release。公开构建不会嵌入本地 `.env` 或任何 API Key；用户首次启动后在界面中填写并保存自己的 Key。仓库已忽略 `dist/`、`build/`、`.env` 和 `*.spec`。
 
 ## 安全说明
 
-- API Key 在用户要求下以明文形式显示和保存，请只在可信电脑上使用。
+- API Key 仅保存在本机用户设置中；百炼 Key 输入框隐藏显示。发布包不包含用户配置或 Key。
 - 桌面悬浮窗是普通置顶窗口，可能出现在屏幕共享或录制内容中。
 - 本项目不提供规避录屏、共享屏幕或监控检测的功能。
 

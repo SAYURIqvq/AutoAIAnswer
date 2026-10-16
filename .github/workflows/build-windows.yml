@@ -27,6 +27,14 @@ jobs:
       - name: Install dependencies
         run: python -m pip install -r requirements.txt
 
+      - name: Set up Node for mobile script tests
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Test mobile speech and shared state
+        run: node --test tests/mobile_browser.test.cjs
+
       - name: Run tests
         timeout-minutes: 5
         run: python -m pytest tests -v -o faulthandler_timeout=60
@@ -39,6 +47,7 @@ jobs:
             --add-data "ai_screenshot_assistant\web\static;ai_screenshot_assistant\web\static" ^
             --add-data "assets;assets" ^
             --hidden-import mouse ^
+            --hidden-import PySide6.QtTextToSpeech ^
             --hidden-import ai_screenshot_assistant.ui.native_capture ^
             --hidden-import ai_screenshot_assistant.ui.win32_capture ^
             --exclude-module AppKit ^
@@ -66,7 +75,15 @@ jobs:
           New-Item -ItemType Directory -Force dist/package | Out-Null
           Copy-Item dist/QQMusic.exe dist/package/QQMusic.exe
           Copy-Item README.md dist/package/README.md
+          Copy-Item RELEASE-v0.2.54.md dist/package/更新说明.md
           Compress-Archive -Path dist/package/* -DestinationPath dist/QQMusic-Windows.zip -Force
+
+      - name: Save build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: QQMusic-Windows.zip
+          path: dist/QQMusic-Windows.zip
+          if-no-files-found: error
 
       - name: Create tagged release if needed
         if: startsWith(github.ref, 'refs/tags/')
@@ -75,7 +92,7 @@ jobs:
         shell: pwsh
         run: |
           gh release view "$env:GITHUB_REF_NAME" `
-            || gh release create "$env:GITHUB_REF_NAME" --title "$env:GITHUB_REF_NAME" --notes "AutoAIAnswer desktop release." `
+            || gh release create "$env:GITHUB_REF_NAME" --title "$env:GITHUB_REF_NAME" --draft --notes-file RELEASE-v0.2.54.md `
             || gh release view "$env:GITHUB_REF_NAME"
 
       - name: Attach zip to tagged release

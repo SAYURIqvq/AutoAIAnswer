@@ -69,9 +69,9 @@
     "openrouter-qwen-8b": "qwen-vl-flash",
     "openrouter-qwen-122b": "qwen-122b",
     "openrouter-qwen-30b-thinking": "qwen-vl-plus",
-    "openrouter-deepseek-flash": "deepseek-flash",
-    "openrouter-deepseek": "deepseek-flash",
-    "deepseek/deepseek-v4.1-flash": "deepseek-flash",
+    "openrouter-deepseek-flash": "qwen-flash",
+    "openrouter-deepseek": "qwen-flash",
+    "deepseek/deepseek-v4.1-flash": "qwen-flash",
     "qwen/qwen3-vl-235b-a22b-thinking": "qwen-vl-plus",
     "qwen/qwen3-vl-32b-instruct": "qwen-vl-flash",
     "qwen/qwen3.5-122b-a10b": "qwen-122b"
@@ -85,6 +85,9 @@
     "qwen-vl-flash": "通义千问 / qwen3-vl-flash（视觉快速）",
     "qwen-122b": "通义千问 / qwen3.5-122b-a10b（122B 图文理解）",
     "qwen-plus": "通义千问 / qwen3.5-plus（长上下文图文理解）",
+    "qwen-397b": "通义千问 / qwen3.5-397b-a17b（397B 图文理解）",
+    "qwen-27b": "通义千问 / qwen3.5-27b（27B 图文理解）",
+    "qwen-35b": "通义千问 / qwen3.5-35b-a3b（35B 图文理解）",
     "qwen-flash": "通义千问 / qwen3.5-flash（快速图文理解）",
     "deepseek-flash": "DeepSeek 官方 / deepseek-flash（快 / 准确一般）"
   };
@@ -729,6 +732,26 @@
         buffer = "";
         setOutput("分析中…");
       }
+    } else if (event.type === "answer.snapshot") {
+      if (payload.chat) {
+        latestChatRequestId = event.request_id;
+        if (!activeAssistantBubble || activeChatRequestId !== event.request_id) {
+          startAssistantMessage(event.request_id);
+        }
+        activeAssistantText = "";
+        appendAssistantDelta(event.request_id, payload.text || "");
+      } else {
+        latestDirectRequestId = event.request_id;
+        buffer = payload.text || "";
+        setOutput(buffer || "分析中…");
+      }
+    } else if (event.type === "screenshot.buffer") {
+      albumItems = albumItems.filter(function (item) { return !item.forChat; });
+      (payload.screenshots || []).forEach(function (screenshot) {
+        if (screenshot.image) addAlbumItem(screenshot.image, screenshot.size || 0, true);
+      });
+      renderPreviewList();
+      updateAskButton();
     } else if (event.type === "answer.delta") {
       if (isOutdatedAnswerEvent(event)) {
         return;
@@ -784,13 +807,6 @@
     } else if (event.type === "model.changed") {
       applyModelAvailability(payload.available_routes);
       setActiveTier(payload.route || payload.tier || currentTier, true);
-      if (modelRoute && modelRoute.selectedOptions[0] && modelRoute.selectedOptions[0].disabled) {
-        const fallback = Array.from(modelRoute.options).find(function (option) { return !option.disabled; });
-        if (fallback) {
-          setActiveTier(fallback.value, true);
-          sendModelTier(fallback.value);
-        }
-      }
       if (payload.display_name && modelHint) {
         modelHint.textContent = payload.display_name;
       }
