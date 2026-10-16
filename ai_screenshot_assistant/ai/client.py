@@ -284,8 +284,6 @@ class VisionClient:
         }
         if self._is_doubao():
             payload["thinking"] = {"type": "disabled"}
-        elif "openrouter.ai" in self.provider.base_url and "thinking" not in self.provider.model.lower():
-            payload["reasoning_effort"] = "none"
         return payload
 
     def _friendly_http_error(self, exc: requests.HTTPError) -> Exception:
@@ -297,7 +295,13 @@ class VisionClient:
             payload = response.json()
             error = payload.get("error") if isinstance(payload, dict) else None
             if isinstance(error, dict):
-                detail = str(error.get("code") or error.get("message") or "")
+                code = str(error.get("code") or "").strip()
+                message = str(error.get("message") or "").strip()
+                detail = f"{message} ({code})" if message and code else message or code
+                metadata = error.get("metadata")
+                raw = metadata.get("raw") if isinstance(metadata, dict) else None
+                if isinstance(raw, str) and raw.strip() and raw.strip() not in detail:
+                    detail = f"{detail}；{raw.strip()[:300]}" if detail else raw.strip()[:300]
         except ValueError:
             detail = (response.text or "")[:180]
         if response.status_code == 404 and self._is_doubao():
@@ -306,7 +310,7 @@ class VisionClient:
                 "请到火山方舟开通该模型后再试。"
             )
         if detail:
-            return RuntimeError(f"{self.provider.name} 调用失败：{detail}")
+            return RuntimeError(f"{self.provider.name} 调用失败（HTTP {response.status_code}，模型 {self.provider.model}）：{detail[:600]}")
         return exc
 
     @staticmethod
