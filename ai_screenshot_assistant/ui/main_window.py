@@ -7,7 +7,8 @@ import sys
 import threading
 from typing import Any
 
-from PySide6.QtCore import QObject, QSettings, Qt, QTimer, Signal
+from PySide6.QtCore import QLocale, QObject, QSettings, Qt, QTimer, Signal
+from PySide6.QtTextToSpeech import QTextToSpeech
 from PySide6.QtGui import QAction, QCloseEvent, QIcon, QPixmap, QFont
 from PySide6.QtWidgets import (
     QApplication,
@@ -80,6 +81,8 @@ class MainWindow(QMainWindow):
             self.setWindowIcon(icon)
         self.setMinimumSize(560, 640)
         self.app_settings = QSettings("AI Screenshot Assistant", "Desktop")
+        self.desktop_speech = QTextToSpeech(self)
+        self.desktop_speech.setLocale(QLocale("zh_CN"))
 
         legacy_key = str(self.app_settings.value("api/key", "") or "")
         self.deepseek_key = str(
@@ -174,9 +177,12 @@ class MainWindow(QMainWindow):
         self.text_color_combo.currentIndexChanged.connect(self._apply_appearance_settings)
         self.overlay_toggle = QCheckBox("显示桌面流式悬浮答案")
         self.overlay_toggle.toggled.connect(self.set_overlay_visible)
-        self.auto_read_toggle = QCheckBox("手机自动朗读答案")
+        self.auto_read_toggle = QCheckBox("手机端发声（自动朗读答案）")
         self.auto_read_toggle.setChecked(self._settings_bool("voice/auto_read", False))
         self.auto_read_toggle.toggled.connect(self._set_auto_read)
+        self.desktop_read_toggle = QCheckBox("电脑端发声（自动朗读答案）")
+        self.desktop_read_toggle.setChecked(self._settings_bool("voice/desktop_read", False))
+        self.desktop_read_toggle.toggled.connect(self._set_desktop_read)
         overlay_visible = self._settings_bool("overlay/visible", True)
         self.console_capture_toggle = QCheckBox("共享屏幕时隐藏控制台")
         self.console_capture_toggle.setChecked(
@@ -250,6 +256,7 @@ class MainWindow(QMainWindow):
         layout.addLayout(appearance_row)
         layout.addWidget(self.overlay_toggle)
         layout.addWidget(self.auto_read_toggle)
+        layout.addWidget(self.desktop_read_toggle)
         layout.addWidget(self.console_capture_toggle)
         opacity_row = QHBoxLayout()
         opacity_row.addWidget(self.opacity_label)
@@ -541,6 +548,7 @@ class MainWindow(QMainWindow):
             self.mouse_listener.set_enabled(True)
 
     def _on_stream_started(self) -> None:
+        self.desktop_speech.stop()
         # Overlay visibility is owned only by 「显示桌面流式悬浮答案」.
         # Streaming must not show/raise it, or the main console comes forward too.
         self.overlay.start_stream()
@@ -870,6 +878,11 @@ class MainWindow(QMainWindow):
 
     def show_result(self, result: dict[str, Any]) -> None:
         self._log("AI result completed")
+        if self.desktop_read_toggle.isChecked():
+            answer = str(result.get("text") or result.get("answer") or "").strip()
+            if answer:
+                self.desktop_speech.stop()
+                self.desktop_speech.say(answer[:12000])
 
     def show_error(self, message: str) -> None:
         self._log(f"Error: {message}")
@@ -916,6 +929,12 @@ class MainWindow(QMainWindow):
         self.app_settings.setValue("voice/auto_read", enabled)
         self.app_settings.sync()
         self._publish_auto_read_mode()
+
+    def _set_desktop_read(self, enabled: bool) -> None:
+        self.app_settings.setValue("voice/desktop_read", enabled)
+        self.app_settings.sync()
+        if not enabled:
+            self.desktop_speech.stop()
 
     def _publish_auto_read_mode(self) -> None:
         if self.publisher is None or self.session is None:
@@ -988,6 +1007,7 @@ class MainWindow(QMainWindow):
                 self._force_quit = True
                 event.accept()
         self.overlay.close()
+        self.desktop_speech.stop()
         if self.workflow is not None:
             self.workflow.cancel_active_analysis()
         if self.mouse_listener is not None:

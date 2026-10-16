@@ -22,11 +22,14 @@
   const modelHint = document.getElementById("model-hint");
   const modelRoute = document.getElementById("model-route");
   const autoReadInput = document.getElementById("auto-read");
+  const voicePreviewButton = document.getElementById("voice-preview");
+  const voiceStatusEl = document.getElementById("voice-status");
   const cursorKey = `lastEventId:${sessionId || "missing"}`;
   const modelTierKey = `modelTier:${sessionId || "missing"}`;
   let lastEventId = 0;
   let autoRead = false;
   let lastSpokenRequestId = "";
+  let speechJob = 0;
   let reconnectMs = 1000;
   let buffer = "";
   let socket = null;
@@ -367,17 +370,51 @@
   }
 
   function stopReading() {
+    speechJob += 1;
     if ("speechSynthesis" in window) window.speechSynthesis.cancel();
   }
 
-  function readAnswer(text, requestId) {
-    if (!autoRead || !text || !("speechSynthesis" in window) || requestId === lastSpokenRequestId) return;
+  function setVoiceStatus(message) {
+    if (voiceStatusEl) voiceStatusEl.textContent = message;
+  }
+
+  function speakText(text) {
+    if (!("speechSynthesis" in window) || !("SpeechSynthesisUtterance" in window)) {
+      setVoiceStatus("此浏览器不支持朗读，请用 Safari 或 Chrome 打开");
+      return;
+    }
     stopReading();
+    const job = speechJob;
+    const plain = String(text).replace(/```[\s\S]*?```/g, "").replace(/[#*`_]/g, "").trim().slice(0, 12000);
+    const chunks = plain.match(/[\s\S]{1,160}/g) || [];
+    if (!chunks.length) return;
+    setVoiceStatus("正在朗读…");
+    let index = 0;
+    function speakNext() {
+      if (job !== speechJob) return;
+      if (index >= chunks.length) {
+        setVoiceStatus("朗读完成");
+        return;
+      }
+      const utterance = new SpeechSynthesisUtterance(chunks[index++]);
+      utterance.lang = "zh-CN";
+      const voices = window.speechSynthesis.getVoices();
+      utterance.voice = voices.find(function (voice) { return /^zh[-_]/i.test(voice.lang); }) || null;
+      utterance.onend = speakNext;
+      utterance.onerror = function (error) {
+        if (job === speechJob && error.error !== "canceled" && error.error !== "interrupted") {
+          setVoiceStatus("朗读失败，请点“试听”并检查手机音量");
+        }
+      };
+      window.speechSynthesis.speak(utterance);
+    }
+    speakNext();
+  }
+
+  function readAnswer(text, requestId) {
+    if (!autoRead || !text || requestId === lastSpokenRequestId) return;
     lastSpokenRequestId = requestId;
-    const plain = String(text).replace(/```[\s\S]*?```/g, "").replace(/[#*`_]/g, "").slice(0, 12000);
-    const utterance = new SpeechSynthesisUtterance(plain);
-    utterance.lang = "zh-CN";
-    window.speechSynthesis.speak(utterance);
+    speakText(text);
   }
 
   function trimChatMessages() {
@@ -669,6 +706,7 @@
       autoRead = payload.enabled === true;
       if (autoReadInput) autoReadInput.checked = autoRead;
       if (!autoRead) stopReading();
+      setVoiceStatus(autoRead ? "手机点“试听”可检查声音" : "");
     } else if (event.type === "answer.started") {
       if (isOutdatedAnswerEvent(event)) {
         return;
@@ -931,10 +969,18 @@
   renderPreviewList();
   if (autoReadInput) autoReadInput.addEventListener("change", function () {
     autoRead = autoReadInput.checked;
-    if (!autoRead) stopReading();
+    if (autoRead) {
+      speakText("手机端自动朗读已开启");
+    } else {
+      stopReading();
+      setVoiceStatus("");
+    }
     if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({
       type: "command.set_auto_read", payload: { enabled: autoRead }
     }));
+  });
+  if (voicePreviewButton) voicePreviewButton.addEventListener("click", function () {
+    speakText("朗读功能已开启，后续答案会自动播放。");
   });
   setActiveTier(currentTier, false);
   connect();

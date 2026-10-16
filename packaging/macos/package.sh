@@ -10,6 +10,7 @@ pyinstaller --noconfirm --clean --windowed --name QQMusic \
   --hidden-import ai_screenshot_assistant.ui.macos_capture \
   --hidden-import ai_screenshot_assistant.ui.native_capture \
   --hidden-import ai_screenshot_assistant.ui.streaming_overlay \
+  --hidden-import PySide6.QtTextToSpeech \
   --hidden-import AppKit \
   --hidden-import Quartz \
   --exclude-module IPython \

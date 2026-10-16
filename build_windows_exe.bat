@@ -8,6 +8,7 @@ python -m PyInstaller --noconfirm --clean --onefile --windowed --name QQMusic %I
   --add-data "ai_screenshot_assistant\web\static;ai_screenshot_assistant\web\static" ^
   --add-data "assets;assets" ^
   --hidden-import mouse ^
+  --hidden-import PySide6.QtTextToSpeech ^
   --hidden-import ai_screenshot_assistant.ui.native_capture ^
   --hidden-import ai_screenshot_assistant.ui.win32_capture ^
   --exclude-module IPython ^

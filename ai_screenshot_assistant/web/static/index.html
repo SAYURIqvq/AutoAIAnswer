@@ -27,7 +27,11 @@
         </select>
       </div>
       <p class="model-hint" id="model-hint">OpenRouter / qwen/qwen3-vl-235b-a22b-thinking</p>
-      <label class="voice-mode"><input id="auto-read" type="checkbox" /> 自动朗读答案</label>
+      <div class="voice-mode">
+        <label><input id="auto-read" type="checkbox" /> 手机端发声（自动朗读答案）</label>
+        <button id="voice-preview" type="button">试听</button>
+        <span id="voice-status" aria-live="polite"></span>
+      </div>
       <div class="selection-status waiting" id="selection-status">
         <span class="status-dot" aria-hidden="true"></span>
         <span id="selection-message">左键长按 2 秒框选，或右键长按 2 秒全屏</span>
@@ -73,6 +77,6 @@
       </div>
     </div>
     <script>window.SESSION_ID = "__SESSION_ID__";</script>
-    <script src="/static/app.js?v=0.2.53"></script>
+    <script src="/static/app.js?v=0.2.53-voice2"></script>
   </body>
 </html>
