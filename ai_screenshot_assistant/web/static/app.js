@@ -82,7 +82,7 @@
     "doubao-seed-2-1-turbo": "豆包 Turbo / doubao-seed-2-1-turbo-260628（快 / 准确较好）",
     "doubao-seed-2-1-pro": "豆包 Pro / doubao-seed-2-1-pro-260915（最准 / 较慢）",
     "qwen-vl-plus": "通义千问 / qwen3-vl-plus（视觉增强）",
-    "qwen-vl-flash": "通义千问 / qwen3-vl-flash（视觉快速）",
+    "qwen-vl-flash": "通义千问 / qwen3.8-flash（视觉快速）",
     "qwen-122b": "通义千问 / qwen3.5-122b-a10b（122B 图文理解）",
     "qwen-plus": "通义千问 / qwen3.5-plus（长上下文图文理解）",
     "qwen-397b": "通义千问 / qwen3.5-397b-a17b（397B 图文理解）",

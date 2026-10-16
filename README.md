@@ -52,7 +52,7 @@ Windows / macOS 截图搜题助手。通过全局鼠标手势框选屏幕题目�
 
 - 支持选择题、判断题、填空题、计算题和简答题；一图多题会按题号对应作答
 - 百炼通义千问、DeepSeek 与豆包均可选，只需配置其中一把 Key 即可使用
-- 手机和桌面可选择通义千问 `qwen3-vl-plus`、`qwen3-vl-flash`、`qwen3.5-122b-a10b`、`qwen3.5-plus`、`qwen3.5-flash` 等视觉模型
+- 手机和桌面可选择通义千问 `qwen3-vl-plus`、`qwen3.8-flash`、`qwen3.5-122b-a10b`、`qwen3.5-plus`、`qwen3.5-flash` 等视觉模型
 - 只使用中国模型（豆包 / DeepSeek / 通义千问），不会调用 GPT、Claude、Gemini 等国外模型
 - 只调用当前选中的模型；额度不足时直接显示该平台的错误
 - 百炼 Key、Key 地域、DeepSeek Key、豆包 Key 和模型路线可在桌面界面保存
@@ -94,10 +94,10 @@ Windows 首次运行可能询问防火墙权限，请允许程序访问“专用
 
 ## 模型切换规则
 
-- 手机和桌面都可以选择具体路线和模型：百炼 `qwen3-vl-plus` / `qwen3-vl-flash` / `qwen3.5-122b-a10b` 等、豆包与 DeepSeek。
+- 手机和桌面都可以选择具体路线和模型：百炼 `qwen3-vl-plus` / `qwen3.8-flash` / `qwen3.5-122b-a10b` 等、豆包与 DeepSeek。
 - 没填对应 Key 的路线会显示「未配置 Key」，不会发请求。旧版 OpenRouter 路线选择会映射到对应的百炼路线。
 - 认证失败、额度不足、限流、超时、网络错误和服务端错误不会自动切换平台。
-- 千问提供 8 个图文模型：`qwen3-vl-plus`、`qwen3-vl-flash`、`qwen3.5-plus`、`qwen3.5-flash`、`qwen3.5-397b-a17b`、`qwen3.5-122b-a10b`、`qwen3.5-27b`、`qwen3.5-35b-a3b`。
+- 千问提供 8 个图文模型：`qwen3-vl-plus`、`qwen3.8-flash`、`qwen3.5-plus`、`qwen3.5-flash`、`qwen3.5-397b-a17b`、`qwen3.5-122b-a10b`、`qwen3.5-27b`、`qwen3.5-35b-a3b`。
 - 北京地域使用 `https://dashscope.aliyuncs.com/compatible-mode/v1`。模型可用性与账户开通情况、Key 地域有关，参考[百炼视觉模型文档](https://help.aliyun.com/zh/model-studio/vision-model)。
 
 ## 从源码运行

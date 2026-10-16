@@ -15,7 +15,7 @@
 千问提供 8 个图文模型：
 
 - qwen3-vl-plus
-- qwen3-vl-flash
+- qwen3.8-flash
 - qwen3.5-plus
 - qwen3.5-flash
 - qwen3.5-397b-a17b

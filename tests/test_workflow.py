@@ -470,7 +470,7 @@ def test_set_model_tier_publishes_choice() -> None:
 
     assert payload["tier"] == "qwen-vl-flash"
     assert payload["route"] == "qwen-vl-flash"
-    assert payload["model"] == "qwen3-vl-flash"
+    assert payload["model"] == "qwen3.8-flash"
     assert publisher.events[-1]["type"] == "model.changed"
     assert "通义千问" in publisher.events[-1]["payload"]["display_name"]
 
