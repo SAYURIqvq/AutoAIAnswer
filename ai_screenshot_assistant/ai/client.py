@@ -19,7 +19,6 @@ from ai_screenshot_assistant.ai.models import (
     DOUBAO_VISION_MODEL,
     MODEL_ROUTES,
     ModelChoice,
-    PROVIDER_LABELS,
     resolve_model_choice,
 )
 from ai_screenshot_assistant.ai.prompt import VISION_PROMPT
@@ -288,7 +287,7 @@ class VisionClient:
 
     def _friendly_http_error(self, exc: requests.HTTPError) -> Exception:
         response = exc.response
-        if response is None or response.status_code in {402, 429}:
+        if response is None or response.status_code == 429:
             return exc
         detail = ""
         try:
@@ -308,6 +307,12 @@ class VisionClient:
             return RuntimeError(
                 f"豆包模型未开通或无权调用（{self.provider.model}）。"
                 "请到火山方舟开通该模型后再试。"
+            )
+        if response.status_code == 402:
+            vendor = self.provider.name
+            return RuntimeError(
+                f"{vendor} 额度不足（HTTP 402，模型 {self.provider.model}）。"
+                f"{detail[:300] if detail else '请检查该平台的账户余额或 API Key 限额。'}"
             )
         if detail:
             return RuntimeError(f"{self.provider.name} 调用失败（HTTP {response.status_code}，模型 {self.provider.model}）：{detail[:600]}")
@@ -438,9 +443,7 @@ def _format_conversation(conversation: list[dict[str, str]]) -> str:
 
 
 class FailoverVisionClient:
-    """Routes a selected Chinese vision provider, with a one-shot 402 failover."""
-
-    _FAILOVER_ORDER = ("openrouter", "deepseek", "doubao")
+    """Routes requests to the selected Chinese vision provider."""
 
     def __init__(
         self,
@@ -577,31 +580,13 @@ class FailoverVisionClient:
             raise RuntimeError("请至少填写 DeepSeek、OpenRouter 或豆包其中一把 API Key")
         if self.current_provider == "none":
             raise RuntimeError("当前路线未配置 Key")
-        try:
-            yield from self._stream_from_client(
-                self._client_for(self.current_provider),
-                png_images,
-                user_text,
-                conversation,
-                cancel_token,
-            )
-            return
-        except requests.HTTPError as exc:
-            status_code = exc.response.status_code if exc.response is not None else None
-            if status_code != 402:
-                raise
-        failed = self.current_provider
-        for name in self._FAILOVER_ORDER:
-            if name == failed or not self._has_provider(name):
-                continue
-            self.current_provider = name
-            self.on_provider_changed(name)
-            yield from self._stream_from_client(
-                self._client_for(name), png_images, user_text, conversation, cancel_token
-            )
-            return
-        vendor = PROVIDER_LABELS.get(failed, failed)
-        raise RuntimeError(f"{vendor} 额度不足（HTTP 402），且没有其他可用 Key")
+        yield from self._stream_from_client(
+            self._client_for(self.current_provider),
+            png_images,
+            user_text,
+            conversation,
+            cancel_token,
+        )
 
 
 # Backward-compatible name for older imports and static delta parser tests.

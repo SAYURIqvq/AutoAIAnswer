@@ -313,13 +313,6 @@ def resolve_model_choice(
         model = route.model
         if provider == "openrouter":
             openrouter_model = model
-    elif route.provider == "deepseek" and has_openrouter:
-        provider = "openrouter"
-        model = OPENROUTER_DEEPSEEK_FLASH
-        openrouter_model = OPENROUTER_DEEPSEEK_FLASH
-    elif route.provider == "openrouter" and has_deepseek:
-        provider = "deepseek"
-        model = DEEPSEEK_VISION_MODEL
     else:
         provider = "none"
         model = ""
