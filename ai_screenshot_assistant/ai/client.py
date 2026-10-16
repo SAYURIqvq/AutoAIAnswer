@@ -231,7 +231,6 @@ class VisionClient:
             json=payload,
             stream=True,
             timeout=self.provider.timeout_seconds,
-            verify=False,
         ) as response:
             if cancel_token is not None:
                 cancel_token.attach_response(response)
@@ -448,13 +447,13 @@ class FailoverVisionClient:
     def __init__(
         self,
         deepseek: ProviderConfig,
-        openrouter: ProviderConfig,
+        qwen: ProviderConfig,
         on_provider_changed: Callable[[str], None] | None = None,
         model_tier: str = DEFAULT_MODEL_TIER,
         doubao: ProviderConfig | None = None,
     ) -> None:
         self.deepseek = VisionClient(deepseek)
-        self.openrouter = VisionClient(openrouter)
+        self.qwen = VisionClient(qwen)
         self.doubao = VisionClient(
             doubao
             or ProviderConfig(
@@ -466,7 +465,7 @@ class FailoverVisionClient:
         )
         self.on_provider_changed = on_provider_changed or (lambda _name: None)
         self._deepseek_has_key = self._has_key(self.deepseek)
-        self._openrouter_has_key = self._has_key(self.openrouter)
+        self._qwen_has_key = self._has_key(self.qwen)
         self._doubao_has_key = self._has_key(self.doubao)
         self.current_provider = self._initial_provider()
         self.model_choice = self.apply_model_tier(model_tier)
@@ -500,21 +499,21 @@ class FailoverVisionClient:
 
     def _has_provider(self, name: str) -> bool:
         return {
-            "openrouter": self._openrouter_has_key,
+            "qwen": self._qwen_has_key,
             "deepseek": self._deepseek_has_key,
             "doubao": self._doubao_has_key,
         }.get(name, False)
 
     def _client_for(self, name: str) -> VisionClient:
         return {
-            "openrouter": self.openrouter,
+            "qwen": self.qwen,
             "deepseek": self.deepseek,
             "doubao": self.doubao,
         }[name]
 
     def _initial_provider(self) -> str:
-        if self._openrouter_has_key:
-            return "openrouter"
+        if self._qwen_has_key:
+            return "qwen"
         if self._deepseek_has_key:
             return "deepseek"
         if self._doubao_has_key:
@@ -522,8 +521,8 @@ class FailoverVisionClient:
         return "none"
 
     def current_model_id(self) -> str:
-        if self.current_provider == "openrouter":
-            provider = getattr(self.openrouter, "provider", None)
+        if self.current_provider == "qwen":
+            provider = getattr(self.qwen, "provider", None)
         elif self.current_provider == "deepseek":
             provider = getattr(self.deepseek, "provider", None)
         elif self.current_provider == "doubao":
@@ -539,16 +538,16 @@ class FailoverVisionClient:
         choice = resolve_model_choice(
             tier,
             has_deepseek=self._deepseek_has_key,
-            has_openrouter=self._openrouter_has_key,
+            has_qwen=self._qwen_has_key,
             has_doubao=self._doubao_has_key,
         )
         deepseek_provider = getattr(self.deepseek, "provider", None)
-        openrouter_provider = getattr(self.openrouter, "provider", None)
+        qwen_provider = getattr(self.qwen, "provider", None)
         doubao_provider = getattr(self.doubao, "provider", None)
         if isinstance(deepseek_provider, ProviderConfig):
             self.deepseek = VisionClient(replace(deepseek_provider, model=choice.deepseek_model))
-        if isinstance(openrouter_provider, ProviderConfig):
-            self.openrouter = VisionClient(replace(openrouter_provider, model=choice.openrouter_model))
+        if isinstance(qwen_provider, ProviderConfig):
+            self.qwen = VisionClient(replace(qwen_provider, model=choice.qwen_model))
         if isinstance(doubao_provider, ProviderConfig):
             self.doubao = VisionClient(replace(doubao_provider, model=choice.doubao_model))
         previous = self.current_provider
@@ -576,8 +575,8 @@ class FailoverVisionClient:
         conversation: list[dict[str, str]] | None = None,
         cancel_token: CancellationToken | None = None,
     ) -> Iterator[str]:
-        if not self._deepseek_has_key and not self._openrouter_has_key and not self._doubao_has_key:
-            raise RuntimeError("请至少填写 DeepSeek、OpenRouter 或豆包其中一把 API Key")
+        if not self._deepseek_has_key and not self._qwen_has_key and not self._doubao_has_key:
+            raise RuntimeError("请至少填写 DeepSeek、Qwen 或豆包其中一把 API Key")
         if self.current_provider == "none":
             raise RuntimeError("当前路线未配置 Key")
         yield from self._stream_from_client(
@@ -590,4 +589,4 @@ class FailoverVisionClient:
 
 
 # Backward-compatible name for older imports and static delta parser tests.
-OpenRouterVisionClient = VisionClient
+QwenVisionClient = VisionClient

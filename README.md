@@ -17,7 +17,7 @@ Mac 上打包只需要 `macos/` 目录：拷到 Mac 后执行 `./build.sh`。Win
 
 [下载 macOS 版 AutoAIAnswer-macOS.dmg](https://github.com/SAYURIqvq/AutoAIAnswer/releases/latest/download/AutoAIAnswer-macOS.dmg)
 
-无需安装 Python，下载对应系统版本后直接运行，并在软件界面中填写自己的 DeepSeek/OpenRouter API Key。公开发行版不包含作者的 API Key。
+无需安装 Python，下载对应系统版本后直接运行，并在软件界面中填写自己的百炼、DeepSeek 或豆包 API Key。公开发行版不包含作者的 API Key。
 
 ### 在 GitHub 页面中找到下载文件
 
@@ -54,11 +54,11 @@ Mac 上打包只需要 `macos/` 目录：拷到 Mac 后执行 `./build.sh`。Win
 ## 功能
 
 - 支持选择题、判断题、填空题、计算题和简答题；一图多题会按题号对应作答
-- DeepSeek、OpenRouter 与豆包均可选，只需配置其中一把 Key 即可使用
-- 手机和桌面选择「路线 + 模型」：豆包 `doubao-seed-1-6-vision-250815`、OpenRouter 通义千问 VL 235B Thinking / 32B、DeepSeek Flash
+- 百炼通义千问、DeepSeek 与豆包均可选，只需配置其中一把 Key 即可使用
+- 手机和桌面可选择通义千问 `qwen3-vl-plus`、`qwen3-vl-flash`、`qwen3.5-122b-a10b`、`qwen3.5-plus`、`qwen3.5-flash` 等视觉模型
 - 只使用中国模型（豆包 / DeepSeek / 通义千问），不会调用 GPT、Claude、Gemini 等国外模型
-- 先走当前选中路线；该路线返回 HTTP 402 时再按 OpenRouter → DeepSeek → 豆包切换一次
-- DeepSeek Key、OpenRouter Key、豆包 Key 和模型路线可在桌面界面保存
+- 只调用当前选中的模型；额度不足时直接显示该平台的错误
+- 百炼 Key、Key 地域、DeepSeek Key、豆包 Key 和模型路线可在桌面界面保存
 - 手机对话支持清空聊天并释放电脑端会话内存
 - 左键长按 2 秒框选题目；右键长按 2 秒截取当前屏幕全屏（macOS 也可用 Control+左键，或窗口内「截取当前屏幕」）
 - 手机二维码配对，答案与解析在单一输出框中实时流式显示
@@ -68,7 +68,7 @@ Mac 上打包只需要 `macos/` 目录：拷到 Mac 后执行 `./build.sh`。Win
 
 ## 使用方式
 
-1. 启动程序，至少填写一把 DeepSeek、OpenRouter 或豆包 Key 并保存，再选择要走的路线和模型。
+1. 启动程序，至少填写一把百炼、DeepSeek 或豆包 Key 并保存，再选择要走的路线和模型。百炼 Key 地域必须与接口地域一致。
 2. 确保手机与电脑连接同一局域网。
 3. 用手机扫描桌面窗口中的二维码并保持页面打开。
 4. 框选题目：在起点按住左键至少 2 秒，松开后移动到终点，再普通单击一次左键。
@@ -87,10 +87,9 @@ Windows 首次运行可能询问防火墙权限，请允许程序访问“专用
 
 ## 模型切换规则
 
-- 手机和桌面都可以选择具体路线和模型：豆包 `doubao-seed-1-6-vision-250815`、OpenRouter `qwen/qwen3-vl-235b-a22b-thinking` / `qwen/qwen3-vl-32b-instruct`、DeepSeek `deepseek-flash`。
-- 没填对应 Key 的路线会显示「未配置 Key」，不会发请求。旧的「简单」档在没有 DeepSeek Key 时仍可回落到 `qwen/qwen3-vl-8b-instruct`。
-- 先走当前选中路线；该路线返回 HTTP 402 且还有其他 Key 时，按 OpenRouter → DeepSeek → 豆包再试一次。
-- 认证失败、限流、超时、网络错误和服务端错误不会自动切换，以免重复消耗额度。
+- 手机和桌面都可以选择具体路线和模型：百炼 `qwen3-vl-plus` / `qwen3-vl-flash` / `qwen3.5-122b-a10b` 等、豆包与 DeepSeek。
+- 没填对应 Key 的路线会显示「未配置 Key」，不会发请求。旧版 OpenRouter 路线选择会映射到对应的百炼路线。
+- 认证失败、额度不足、限流、超时、网络错误和服务端错误不会自动切换平台。
 
 ## 从源码运行
 
@@ -124,10 +123,10 @@ DEEPSEEK_API_KEY=
 DEEPSEEK_MODEL=deepseek-flash
 DEEPSEEK_BASE_URL=https://api.deepseek.com
 
-OPENROUTER_API_KEY=
-OPENROUTER_MODEL=qwen/qwen3-vl-235b-a22b-thinking
-OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
-MODEL_TIER=good
+DASHSCOPE_API_KEY=
+QWEN_MODEL=qwen3-vl-plus
+QWEN_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+MODEL_TIER=qwen-vl-plus
 ```
 
 不要提交真实 API Key。桌面界面保存的设置由 Qt `QSettings` 存储在当前系统用户配置中。

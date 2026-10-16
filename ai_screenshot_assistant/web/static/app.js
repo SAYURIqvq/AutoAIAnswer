@@ -44,13 +44,13 @@
   let nextAlbumId = 1;
   let requestCounter = 0;
   const routeAliases = {
-    good: "openrouter-qwen-235b",
-    high: "openrouter-qwen-235b",
-    best: "openrouter-qwen-235b",
-    "好": "openrouter-qwen-235b",
-    medium: "openrouter-qwen-32b",
-    mid: "openrouter-qwen-32b",
-    "中等": "openrouter-qwen-32b",
+    good: "qwen-vl-plus",
+    high: "qwen-vl-plus",
+    best: "qwen-vl-plus",
+    "好": "qwen-vl-plus",
+    medium: "qwen-vl-flash",
+    mid: "qwen-vl-flash",
+    "中等": "qwen-vl-flash",
     simple: "deepseek-flash",
     low: "deepseek-flash",
     easy: "deepseek-flash",
@@ -64,25 +64,31 @@
     "doubao-seed-2-0-lite-260428": "doubao-seed-2-0-lite",
     "doubao-seed-2-1-turbo-260628": "doubao-seed-2-1-turbo",
     "doubao-seed-2-1-pro-260915": "doubao-seed-2-1-pro",
-    "deepseek/deepseek-v4.1-flash": "openrouter-deepseek-flash",
-    "qwen/qwen3-vl-235b-a22b-thinking": "openrouter-qwen-235b",
-    "qwen/qwen3-vl-32b-instruct": "openrouter-qwen-32b",
-    "openrouter-deepseek": "openrouter-deepseek-flash"
+    "openrouter-qwen-235b": "qwen-vl-plus",
+    "openrouter-qwen-32b": "qwen-vl-flash",
+    "openrouter-qwen-8b": "qwen-vl-flash",
+    "openrouter-qwen-122b": "qwen-122b",
+    "openrouter-qwen-30b-thinking": "qwen-vl-plus",
+    "openrouter-deepseek-flash": "deepseek-flash",
+    "openrouter-deepseek": "deepseek-flash",
+    "deepseek/deepseek-v4.1-flash": "deepseek-flash",
+    "qwen/qwen3-vl-235b-a22b-thinking": "qwen-vl-plus",
+    "qwen/qwen3-vl-32b-instruct": "qwen-vl-flash",
+    "qwen/qwen3.5-122b-a10b": "qwen-122b"
   };
   const knownRoutes = {
     "doubao-seed-2-0-mini": "豆包 Mini / doubao-seed-2-0-mini-260428（最快 / 准确一般）",
     "doubao-seed-2-0-lite": "豆包 Lite / doubao-seed-2-0-lite-260428（较快 / 准确中等）",
     "doubao-seed-2-1-turbo": "豆包 Turbo / doubao-seed-2-1-turbo-260628（快 / 准确较好）",
     "doubao-seed-2-1-pro": "豆包 Pro / doubao-seed-2-1-pro-260915（最准 / 较慢）",
-    "openrouter-qwen-235b": "OpenRouter / qwen/qwen3-vl-235b-a22b-instruct（高精度 / 较慢）",
-    "openrouter-qwen-32b": "OpenRouter / qwen/qwen3-vl-30b-a3b-instruct（较快 / 准确较好）",
-    "openrouter-qwen-8b": "OpenRouter / qwen/qwen3-vl-8b-instruct（最快 / 准确一般）",
-    "openrouter-qwen-122b": "OpenRouter / qwen/qwen3.5-122b-a10b（新模型 / 图文理解）",
-    "openrouter-qwen-30b-thinking": "OpenRouter / qwen/qwen3-vl-30b-a3b-thinking（会思考 / 图文理解）",
-    "openrouter-deepseek-flash": "OpenRouter DeepSeek / deepseek/deepseek-v4.1-flash（快 / 准确较好）",
+    "qwen-vl-plus": "通义千问 / qwen3-vl-plus（视觉增强）",
+    "qwen-vl-flash": "通义千问 / qwen3-vl-flash（视觉快速）",
+    "qwen-122b": "通义千问 / qwen3.5-122b-a10b（122B 图文理解）",
+    "qwen-plus": "通义千问 / qwen3.5-plus（长上下文图文理解）",
+    "qwen-flash": "通义千问 / qwen3.5-flash（快速图文理解）",
     "deepseek-flash": "DeepSeek 官方 / deepseek-flash（快 / 准确一般）"
   };
-  let currentTier = normalizeRoute(localStorage.getItem(modelTierKey) || "openrouter-qwen-235b");
+  let currentTier = normalizeRoute(localStorage.getItem(modelTierKey) || "qwen-vl-plus");
   const maxScreenshots = 5;
   const maxAlbumItems = 12;
   const maxChatMessages = 40;
@@ -100,7 +106,7 @@
     if (knownRoutes[lowered]) {
       return lowered;
     }
-    return routeAliases[lowered] || "openrouter-qwen-235b";
+    return routeAliases[lowered] || "qwen-vl-plus";
   }
 
   function nextRequestId(prefix) {
@@ -893,7 +899,7 @@
 
   if (modelRoute) {
     modelRoute.addEventListener("change", function () {
-      const route = modelRoute.value || "openrouter-qwen-235b";
+      const route = modelRoute.value || "qwen-vl-plus";
       setActiveTier(route, true);
       sendModelTier(route);
     });

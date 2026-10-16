@@ -88,8 +88,11 @@ class MainWindow(QMainWindow):
         self.deepseek_key = str(
             self.app_settings.value("providers/deepseek_key", legacy_key or settings.deepseek_api_key) or ""
         )
-        self.openrouter_key = str(
-            self.app_settings.value("providers/openrouter_key", settings.openrouter_api_key) or ""
+        self.qwen_key = str(
+            self.app_settings.value("providers/qwen_key", settings.qwen_api_key) or ""
+        )
+        self.qwen_base_url = str(
+            self.app_settings.value("providers/qwen_base_url", settings.qwen_base_url) or settings.qwen_base_url
         )
         self.doubao_key = str(
             self.app_settings.value("providers/doubao_key", settings.doubao_api_key) or ""
@@ -135,9 +138,19 @@ class MainWindow(QMainWindow):
         self.deepseek_key_input = QLineEdit(self.deepseek_key)
         self.deepseek_key_input.setEchoMode(QLineEdit.Normal)
         self.deepseek_key_input.setPlaceholderText("可选，DeepSeek Flash 看图")
-        self.openrouter_key_input = QLineEdit(self.openrouter_key)
-        self.openrouter_key_input.setEchoMode(QLineEdit.Normal)
-        self.openrouter_key_input.setPlaceholderText("可选，通义千问 VL")
+        self.qwen_key_input = QLineEdit(self.qwen_key)
+        self.qwen_key_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.qwen_key_input.setPlaceholderText("可选，通义千问 VL")
+        self.qwen_region_combo = QComboBox()
+        for label, url in (
+            ("华北2（北京）", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+            ("新加坡", "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"),
+            ("美国（弗吉尼亚）", "https://dashscope-us.aliyuncs.com/compatible-mode/v1"),
+            ("中国香港", "https://cn-hongkong.dashscope.aliyuncs.com/compatible-mode/v1"),
+        ):
+            self.qwen_region_combo.addItem(label, url)
+        region_index = self.qwen_region_combo.findData(self.qwen_base_url)
+        self.qwen_region_combo.setCurrentIndex(region_index if region_index >= 0 else 0)
         self.doubao_key_input = QLineEdit(self.doubao_key)
         self.doubao_key_input.setEchoMode(QLineEdit.Normal)
         self.doubao_key_input.setPlaceholderText("可选，火山方舟 ARK_API_KEY")
@@ -233,7 +246,8 @@ class MainWindow(QMainWindow):
 
         provider_form = QFormLayout()
         provider_form.addRow("DeepSeek Key（可选）", self.deepseek_key_input)
-        provider_form.addRow("OpenRouter Key（可选）", self.openrouter_key_input)
+        provider_form.addRow("通义千问 Key（可选）", self.qwen_key_input)
+        provider_form.addRow("通义千问 Key 地域", self.qwen_region_combo)
         provider_form.addRow("豆包 Key（可选）", self.doubao_key_input)
         provider_form.addRow("模型", self.model_tier_combo)
 
@@ -378,11 +392,11 @@ class MainWindow(QMainWindow):
             timeout_seconds=settings.request_timeout_seconds,
             system_prompt=self.system_prompt,
         )
-        openrouter = ProviderConfig(
-            name="OpenRouter",
-            api_key=self.openrouter_key,
-            base_url=settings.openrouter_base_url,
-            model=settings.openrouter_model,
+        qwen = ProviderConfig(
+            name="通义千问",
+            api_key=self.qwen_key,
+            base_url=self.qwen_base_url,
+            model=settings.qwen_model,
             timeout_seconds=settings.request_timeout_seconds,
             system_prompt=self.system_prompt,
         )
@@ -396,7 +410,7 @@ class MainWindow(QMainWindow):
         )
         return FailoverVisionClient(
             deepseek,
-            openrouter,
+            qwen,
             on_provider_changed=lambda name: self.signals.provider_changed.emit(name),
             model_tier=self.model_tier,
             doubao=doubao,
@@ -435,19 +449,21 @@ class MainWindow(QMainWindow):
             self.setStyleSheet("QMainWindow, QWidget { background: #ffffff; color: #202124; }")
     def save_provider_settings(self) -> None:
         deepseek_key = self.deepseek_key_input.text().strip()
-        openrouter_key = self.openrouter_key_input.text().strip()
+        qwen_key = self.qwen_key_input.text().strip()
         doubao_key = self.doubao_key_input.text().strip()
-        if not deepseek_key and not openrouter_key and not doubao_key:
-            self.save_status.setText("请至少填写 DeepSeek、OpenRouter 或豆包其中一把 Key")
+        if not deepseek_key and not qwen_key and not doubao_key:
+            self.save_status.setText("请至少填写 DeepSeek、通义千问 或豆包其中一把 Key")
             self.save_status.setStyleSheet("color: #d33;")
             return
         self.deepseek_key = deepseek_key
-        self.openrouter_key = openrouter_key
+        self.qwen_key = qwen_key
+        self.qwen_base_url = str(self.qwen_region_combo.currentData() or settings.qwen_base_url)
         self.doubao_key = doubao_key
         self._refresh_model_route_availability()
         self.model_tier = normalize_model_tier(self.model_tier_combo.currentData())
         self.app_settings.setValue("providers/deepseek_key", deepseek_key)
-        self.app_settings.setValue("providers/openrouter_key", openrouter_key)
+        self.app_settings.setValue("providers/qwen_key", qwen_key)
+        self.app_settings.setValue("providers/qwen_base_url", self.qwen_base_url)
         self.app_settings.setValue("providers/doubao_key", doubao_key)
         self.app_settings.setValue("providers/model_tier", self.model_tier)
         self.app_settings.sync()
@@ -468,7 +484,7 @@ class MainWindow(QMainWindow):
     def _refresh_model_route_availability(self) -> None:
         has_provider = {
             "doubao": bool(self.doubao_key.strip()),
-            "openrouter": bool(self.openrouter_key.strip()),
+            "qwen": bool(self.qwen_key.strip()),
             "deepseek": bool(self.deepseek_key.strip()),
         }
         for index, (route_id, vendor, model_name) in enumerate(route_options()):
@@ -494,7 +510,7 @@ class MainWindow(QMainWindow):
         if choice is not None and getattr(choice, "display_name", ""):
             if current not in {None, "", choice.provider} and current != "none":
                 model = client.current_model_id() if client is not None and hasattr(client, "current_model_id") else choice.model
-                vendor = {"openrouter": "OpenRouter", "deepseek": "DeepSeek", "doubao": "豆包"}.get(current, current)
+                vendor = {"qwen": "通义千问", "deepseek": "DeepSeek", "doubao": "豆包"}.get(current, current)
                 self.provider_label.setText(f"当前模型：{vendor} / {model}" if model else f"当前模型：{vendor}")
                 return
             self.provider_label.setText(f"当前模型：{choice.display_name}")
@@ -502,7 +518,7 @@ class MainWindow(QMainWindow):
         model = ""
         if client is not None and hasattr(client, "current_model_id"):
             model = client.current_model_id()
-        vendor = {"openrouter": "OpenRouter", "deepseek": "DeepSeek", "doubao": "豆包"}.get(current)
+        vendor = {"qwen": "通义千问", "deepseek": "DeepSeek", "doubao": "豆包"}.get(current)
         if vendor and model:
             self.provider_label.setText(f"当前模型：{vendor} / {model}")
         elif vendor:
@@ -512,7 +528,7 @@ class MainWindow(QMainWindow):
 
     def _on_provider_failover(self, provider: str) -> None:
         self.set_provider(provider)
-        vendor = {"openrouter": "OpenRouter", "deepseek": "DeepSeek", "doubao": "豆包"}.get(provider, provider)
+        vendor = {"qwen": "通义千问", "deepseek": "DeepSeek", "doubao": "豆包"}.get(provider, provider)
         self._log(f"额度不足，已切换到 {vendor}")
 
     def set_overlay_visible(self, visible: bool) -> None:
