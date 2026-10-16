@@ -14,8 +14,9 @@ class BackendSession:
 
 
 class BackendApi:
-    def __init__(self, base_url: str) -> None:
+    def __init__(self, base_url: str, public_url: str | None = None) -> None:
         self.base_url = base_url.rstrip("/")
+        self.public_url = (public_url or base_url).rstrip("/")
         self.http = requests.Session()
         # Pairing talks to the embedded server on this PC. System proxy settings
         # (for example a local proxy on 127.0.0.1:9674) must not intercept it.
@@ -36,4 +37,4 @@ class BackendApi:
     def absolute_url(self, path_or_url: str) -> str:
         if path_or_url.startswith(("http://", "https://")):
             return path_or_url
-        return f"{self.base_url}{path_or_url}"
+        return f"{self.public_url}{path_or_url}"

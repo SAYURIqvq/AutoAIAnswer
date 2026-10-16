@@ -71,10 +71,12 @@ def main() -> int:
     backend = None
     try:
         backend_url = settings.backend_url
+        public_url = backend_url
         if settings.embedded_backend or settings.backend_url == "auto":
             backend = EmbeddedBackend(settings.backend_port)
-            backend_url = backend.start()
-        window = MainWindow(backend_url=backend_url)
+            public_url = backend.start()
+            backend_url = backend.local_url
+        window = MainWindow(backend_url=backend_url, public_url=public_url)
         window.show()
         return app.exec()
     except Exception as exc:

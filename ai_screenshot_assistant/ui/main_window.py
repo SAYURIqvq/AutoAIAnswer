@@ -70,9 +70,10 @@ class UiSignals(QObject):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, backend_url: str | None = None) -> None:
+    def __init__(self, backend_url: str | None = None, public_url: str | None = None) -> None:
         super().__init__()
         self.backend_url = backend_url or settings.backend_url
+        self.public_url = public_url or self.backend_url
         self.setWindowTitle(gAppName)
         icon = self._app_icon()
         if not icon.isNull():
@@ -558,7 +559,7 @@ class MainWindow(QMainWindow):
                 pair_token = secrets.token_urlsafe(32)
                 self.app_settings.setValue("mobile/pair_token", pair_token)
                 self.app_settings.sync()
-            self.session = BackendApi(self.backend_url).create_session(pair_token=pair_token)
+            self.session = BackendApi(self.backend_url, public_url=self.public_url).create_session(pair_token=pair_token)
             self.publisher = DesktopWebSocketPublisher(self.backend_url, self.session.session_id)
             self.command_client = DesktopCommandClient(
                 self.backend_url,
